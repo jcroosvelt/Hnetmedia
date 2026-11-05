@@ -29,13 +29,15 @@ content/*.json   ─┘  (repli hors ligne)
 - `pages/*.html` : fragments des pages fixes (à-propos, équipe, charte, partenaires, publicité, carrières, contact, légales, plan du site, recherche, 404)
 - `build.js` : génère accueil, 8 rubriques, `/article/{slug}.html`, `/auteur/{id}.html`, `/tag/{slug}.html`, pages fixes, `content/search-index.json`, `sitemap.xml`, `rss.xml`, `robots.txt`, JSON-LD (NewsArticle, BreadcrumbList, Organization, WebSite+SearchAction)
 - `assets/` : `style.css`, `main.js` (date, nav active, FR/EN, partage, redirection des anciens `#/route`), `contact.js` / `newsletter.js` (`CONTACT_ENDPOINT` / `NEWSLETTER_ENDPOINT` vides), `search.js` (recherche client sur l'index)
-- `admin/index.html` : ancien outil local qui génère du JSON d'article — **sans authentification**, il n'est **plus copié dans `dist/`** (remplacé par l'admin sécurisé de la phase 2). `dist/content/` ne contient que `search-index.json`.
+- `admin-app/` : **espace rédaction sécurisé** servi sur `/admin` (aucun lien depuis le site, `noindex`, CSP stricte dans `vercel.json`). `index.html` + `admin.css` (variables/polices du site uniquement) + `admin.js` (interface, JS sans dépendance, DOM via textContent) + `editor.src.js` → **`editor.js` compilé et versionné** (TipTap/ProseMirror, MIT). Après toute modification de `editor.src.js` : `npm run build:editor` puis committer `editor.js`. L'ancien outil `admin/` (sans authentification) est supprimé.
+- `assets/article-body.css` : typographie du corps d'article (h2-h4, listes, citations, figures, tableaux), feuille SÉPARÉE de `style.css` (qui reste intact), partagée par les pages d'article (`.article-body`) et l'éditeur (aperçu fidèle). Couleurs et polices existantes uniquement.
 - `vercel.json` (build `node build.js`, sortie `dist/`, URLs propres), `.htaccess` (Apache) — Netlify n'est pas utilisé
 - `serve.js` : serveur local avec URLs propres → `npm run dev` ou `node build.js && node serve.js`
 - `api/` : fonctions serverless Vercel — `contact.js`, `newsletter.js` (subscribe/confirm/unsubscribe), `views.js` (compteur + plus lus/tendances), `admin.js` (auth + API d'administration), `health.js` (contrôle : base joignable ?). Réécritures dans `vercel.json`.
 - `server/` : code partagé des fonctions (db, http, sécurité, rate limiting, validation, anti-spam, e-mail, auth scrypt/sessions/CSRF, articles, nettoyage HTML)
 - `db/` : `migrations/*.sql`, `migrate.js`, `import-json.js`
-- `test/` : tests de bout en bout des fonctions (`npm test`) contre un PostgreSQL **local** (`TEST_PG_ADMIN_URL`), jamais contre Neon
+- `test/` : `npm test` (API de bout en bout) et `npm run test:browser` (Playwright : interface /admin, mobile + ordinateur, droits par rôle) contre un PostgreSQL **local** (`TEST_PG_ADMIN_URL`, port 5433), jamais contre Neon
+- Dépendances de production figées : `sanitize-html` en **2.13.1** exactement (les versions ≥ 2.14 tirent htmlparser2 12, module ESM seul : la fonction admin plante sur Vercel). Node imposé : 22.x.
 - Variables d'environnement : voir `.env.example`
 
 Statuts d'article : `brouillon` | `programme` | `publie` | `archive`. Public = `publie` ET `publishedAt` ≤ maintenant.
@@ -43,6 +45,8 @@ Types : `information` | `opinion` | `tribune` | `editorial` | `analyse` (+ `spon
 `articles.json` contient 1 brouillon-modèle (non publié) : le garder comme référence de schéma.
 
 ## Dette connue (à traiter)
+- **Bandeau de l'éditeur** (`admin-app/admin.js`, « le site public est encore généré depuis les fichiers du dépôt ») : à retirer dès que `build.js` lit Neon (étape 8).
+- Images des articles : adresse https saisie à la main ; le téléversement (médiathèque) reste à faire.
 - Pagination des rubriques : conteneur `#catPagination` et `window.__CAT_TOTAL__` présents, **aucun JS** ne pagine encore (10/page prévu).
 - `newsletterStats` : conteneur `#nlStats` masqué, **aucun JS/rendu** ; ne l'afficher que si renseigné dans site-settings.
 - Convention d'URL à trancher : liens du header/footer sans `.html` (`/politique`), canonical/sitemap/cartes avec `.html`. Choisir une seule forme partout.

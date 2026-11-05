@@ -149,6 +149,7 @@ ${noindex ? '<meta name="robots" content="noindex, nofollow">' : '<meta name="ro
 <link rel="manifest" href="/site.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css">
+<link rel="stylesheet" href="/assets/article-body.css">
 ${jsonLd}
 ${extraHead}
 </head>
@@ -420,7 +421,7 @@ function buildArticlePages() {
 
         ${correctionHtml}
 
-        <div class="modal-body" style="font-size:15px;line-height:1.85;color:#2D3748">${a.content}</div>
+        <div class="modal-body article-body" style="font-size:15px;line-height:1.85;color:#2D3748">${a.content}</div>
 
         ${sourcesHtml}
 
@@ -667,7 +668,7 @@ function buildRss() {
 function buildRobots() {
   writeFile("robots.txt", `User-agent: *
 Allow: /
-Disallow: /admin/
+Disallow: /admin
 
 Sitemap: ${BASE_URL}/sitemap.xml
 `);
@@ -692,6 +693,10 @@ function run() {
   buildRobots();
 
   copyDir(path.join(ROOT, "assets"), path.join(DIST_DIR, "assets"));
+  // Espace rédaction (/admin) : page + programme + éditeur compilé. Le fichier source
+  // de l'éditeur (editor.src.js) n'est pas publié.
+  copyDir(path.join(ROOT, "admin-app"), path.join(DIST_DIR, "admin"));
+  fs.rmSync(path.join(DIST_DIR, "admin", "editor.src.js"), { force: true });
   // Sécurité : on ne publie PAS content/*.json (contiendrait brouillons et
   // articles programmés) ni l'ancien outil admin/ sans authentification.
   // Seul content/search-index.json (articles publics uniquement) est généré

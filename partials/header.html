@@ -1,0 +1,61 @@
+<div class="ticker">
+  <div class="ticker-badge">
+    <div class="live-dot"></div>
+    URGENT
+  </div>
+  <div class="ticker-rail">
+    <div class="ticker-tape" id="tickerTape">
+      <!--TICKER_ITEMS-->
+    </div>
+  </div>
+</div>
+
+<header class="site-header">
+  <div class="header-top">
+    <!-- LOGO -->
+    <a href="/" class="logo-link">
+      <img class="logo-img" src="/assets/logo.png" alt="HNet Media" width="280" height="60" loading="eager">
+    </a>
+
+    <!-- DATE -->
+    <div class="header-center">
+      <span class="date-line" id="currentDate"></span>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="header-right">
+      <form class="search-box" action="/recherche" method="get" role="search">
+        <input class="search-field" type="text" name="q" placeholder="Rechercher…" id="searchInput" autocomplete="off">
+        <button class="search-icon" type="submit" aria-label="Rechercher">🔍</button>
+      </form>
+      <div class="lang-sw">
+        <button class="lang-btn" data-lang="fr" onclick="setLang('fr',this)">FR</button>
+        <button class="lang-btn" data-lang="en" onclick="setLang('en',this)">EN</button>
+      </div>
+      <a href="/#newsletter" class="sub-btn">S'abonner</a>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-link" data-route="home" href="/">Accueil</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="politique" href="/politique">Politique</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="monde" href="/monde">Monde</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="economie" href="/economie">Économie</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="sport" href="/sport">Sport</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="culture" href="/culture">Culture</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="tech" href="/tech">Tech</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="sante" href="/sante">Santé</a>
+      <div class="nav-dot"></div>
+      <a class="nav-link" data-route="opinions" href="/opinions">Opinions</a>
+    </div>
+  </nav>
+</header>

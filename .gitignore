@@ -1,0 +1,8 @@
+# Sortie de build (régénérée par Vercel à chaque déploiement)
+dist/
+node_modules/
+# Secrets — ne jamais committer
+.env
+.env.local
+.env.*.local
+.vercel/

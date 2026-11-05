@@ -1,0 +1,28 @@
+[
+  {
+    "id": "exemple-001",
+    "slug": "exemple-de-fiche-article",
+    "status": "brouillon",
+    "type": "information",
+    "sponsored": false,
+    "featured": false,
+    "urgent": false,
+    "recommended": false,
+    "category": "politique",
+    "subcategory": null,
+    "kicker": "Surtitre optionnel",
+    "title": "Titre de l'article (exemple de schéma — non publié)",
+    "excerpt": "Chapeau de l'article : un résumé de deux à trois phrases qui donne l'essentiel de l'information.",
+    "authorId": null,
+    "publishedAt": null,
+    "updatedAt": null,
+    "readingTime": null,
+    "mainImage": {"url": "", "alt": "", "caption": "", "credit": ""},
+    "gallery": [],
+    "tags": [],
+    "content": "<p>Corps de l'article en HTML simple (paragraphes, sous-titres h2/h3, listes, citations blockquote, liens).</p>",
+    "sources": [],
+    "correction": null,
+    "seo": {"title": "", "description": "", "ogImage": ""}
+  }
+]

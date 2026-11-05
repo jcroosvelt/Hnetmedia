@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node build.js",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/article/:slug", "destination": "/article/:slug.html" },
+    { "source": "/auteur/:slug", "destination": "/auteur/:slug.html" },
+    { "source": "/tag/:slug", "destination": "/tag/:slug.html" }
+  ]
+}

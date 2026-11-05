@@ -1,0 +1,13 @@
+# Apache — URLs propres (mêmes règles que _redirects / vercel.json)
+RewriteEngine On
+
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.*)$ $1.html [L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^article/([^/]+)$ article/$1.html [L]
+RewriteRule ^auteur/([^/]+)$ auteur/$1.html [L]
+RewriteRule ^tag/([^/]+)$ tag/$1.html [L]
+
+ErrorDocument 404 /404.html

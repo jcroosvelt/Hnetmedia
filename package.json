@@ -1,0 +1,10 @@
+{
+  "name": "hnetmedia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HNet Media — site statique généré à partir de content/*.json (sans base de données)",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js && node serve.js 8000"
+  }
+}

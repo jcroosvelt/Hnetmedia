@@ -1,0 +1,14 @@
+{
+  "siteName": "HNet Media",
+  "baseUrl": "https://www.hnetmedia.com",
+  "tagline": "L'actualité sans frontières",
+  "description": "HNet Media : l'actualité Politique, Monde, Économie, Sport, Culture, Tech et Santé. Un journalisme indépendant, rigoureux et engagé au service du citoyen.",
+  "contactEmail": "redaction@hnetmedia.com",
+  "social": {"twitter": "", "facebook": "", "linkedin": "", "youtube": "", "instagram": ""},
+  "newsletterStats": null,
+  "partners": [],
+  "jobs": [],
+  "contactCategories": ["Rédaction", "Correction", "Publicité", "Partenariat", "Recrutement", "Autre"],
+  "contactEndpoint": "",
+  "newsletterEndpoint": ""
+}

@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
-    "sanitize-html": "^2.18.1"
+    "sanitize-html": "2.13.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "devDependencies": {
     "pg": "^8.23.1"

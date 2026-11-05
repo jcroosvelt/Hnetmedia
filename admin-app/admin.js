@@ -160,7 +160,7 @@
     clear(app);
     app.appendChild(h("div", { class: "hn-auth" },
       h("div", { class: "hn-card" },
-        h("img", { src: "/assets/logo.png", alt: "HNet Media" }),
+        h("div", { class: "hn-auth-logo" }, h("img", { src: "/assets/logo.png", alt: "HNet Media" })),
         h("h1", { class: "hn-h1", text: title }),
         h("p", { class: "hn-sub", text: sub }),
         form)));
@@ -177,8 +177,8 @@
     };
     var btn = h("button", { type: "submit", class: "hn-btn hn-btn-primary", text: "Créer le compte administrateur" });
     var form = h("form", { class: "hn-form", novalidate: true },
-      h("label", { for: "s-token", text: "Code d'installation (ADMIN_SETUP_TOKEN)" }), f.token,
-      h("p", { class: "hn-hint", text: "Le code que vous avez enregistré dans Vercel. Il ne sert qu'une fois." }),
+      h("label", { for: "s-token", text: "Code d'installation" }), f.token,
+      h("p", { class: "hn-hint", text: "La valeur de ADMIN_SETUP_TOKEN que vous avez enregistrée dans Vercel. Elle ne sert qu'une fois." }),
       h("label", { for: "s-name", text: "Votre nom" }), f.name,
       h("label", { for: "s-email", text: "Votre e-mail" }), f.email,
       h("label", { for: "s-pw", text: "Mot de passe (12 caractères minimum)" }), f.pw,

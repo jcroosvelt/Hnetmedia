@@ -228,9 +228,9 @@ async function main() {
   if (args.includes("--dry-run")) { q.forEach((x) => console.log("  · " + x.label)); return; }
 
   if (!process.env.DATABASE_URL) { console.error("❌ DATABASE_URL absente (voir .env.example)."); process.exit(1); }
-  const { neon } = require("@neondatabase/serverless");
-  const sql = neon(process.env.DATABASE_URL);
-  await sql.transaction(q.map((x) => sql.query(x.text, x.params)));
+  const db = require("../server/db").getDb();
+  await db.transaction(q.map((x) => ({ text: x.text, params: x.params })));
+  await db.end();
   console.log(`✅ Import terminé (${q.length} instructions, une seule transaction).`);
 }
 

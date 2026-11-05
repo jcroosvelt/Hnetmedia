@@ -8,12 +8,17 @@
     "dev": "node build.js && node serve.js 8000",
     "db:migrate": "node db/migrate.js",
     "db:status": "node db/migrate.js --status",
-    "db:import": "node db/import-json.js"
+    "db:import": "node db/import-json.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.2.0"
+    "@neondatabase/serverless": "^1.2.0",
+    "sanitize-html": "^2.18.1"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "pg": "^8.23.1"
   }
 }

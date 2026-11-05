@@ -2,9 +2,17 @@
   "name": "hnetmedia",
   "version": "1.0.0",
   "private": true,
-  "description": "HNet Media — site statique généré à partir de content/*.json (sans base de données)",
+  "description": "HNet Media — site statique généré par build.js (contenu Neon PostgreSQL, repli content/*.json), hébergé sur Vercel",
   "scripts": {
     "build": "node build.js",
-    "dev": "node build.js && node serve.js 8000"
+    "dev": "node build.js && node serve.js 8000",
+    "db:migrate": "node db/migrate.js",
+    "db:status": "node db/migrate.js --status"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

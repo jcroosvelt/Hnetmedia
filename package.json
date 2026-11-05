@@ -7,7 +7,8 @@
     "build": "node build.js",
     "dev": "node build.js && node serve.js 8000",
     "db:migrate": "node db/migrate.js",
-    "db:status": "node db/migrate.js --status"
+    "db:status": "node db/migrate.js --status",
+    "db:import": "node db/import-json.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0"

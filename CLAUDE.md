@@ -32,7 +32,7 @@ content/*.json   ─┘  (repli hors ligne)
 - `admin/index.html` : ancien outil local qui génère du JSON d'article — **sans authentification**, il n'est **plus copié dans `dist/`** (remplacé par l'admin sécurisé de la phase 2). `dist/content/` ne contient que `search-index.json`.
 - `vercel.json` (build `node build.js`, sortie `dist/`, URLs propres), `.htaccess` (Apache) — Netlify n'est pas utilisé
 - `serve.js` : serveur local avec URLs propres → `npm run dev` ou `node build.js && node serve.js`
-- `api/` : fonctions serverless Vercel — `contact.js`, `newsletter.js` (subscribe/confirm/unsubscribe), `views.js` (compteur + plus lus/tendances), `admin.js` (auth + API d'administration). Réécritures dans `vercel.json`.
+- `api/` : fonctions serverless Vercel — `contact.js`, `newsletter.js` (subscribe/confirm/unsubscribe), `views.js` (compteur + plus lus/tendances), `admin.js` (auth + API d'administration), `health.js` (contrôle : base joignable ?). Réécritures dans `vercel.json`.
 - `server/` : code partagé des fonctions (db, http, sécurité, rate limiting, validation, anti-spam, e-mail, auth scrypt/sessions/CSRF, articles, nettoyage HTML)
 - `db/` : `migrations/*.sql`, `migrate.js`, `import-json.js`
 - `test/` : tests de bout en bout des fonctions (`npm test`) contre un PostgreSQL **local** (`TEST_PG_ADMIN_URL`), jamais contre Neon

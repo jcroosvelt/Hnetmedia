@@ -44,6 +44,7 @@ const routes = {
   "/api/newsletter": require("../api/newsletter"),
   "/api/views": require("../api/views"),
   "/api/admin": require("../api/admin"),
+  "/api/health": require("../api/health"),
 };
 
 test.before(async () => {
@@ -371,4 +372,12 @@ test("admin : abonnés, export CSV et statistiques", async () => {
   assert.equal(views.status, 200);
   assert.ok(views.json.topArticles[0].views >= 1, "les chiffres détaillés restent internes");
   assert.equal((await call("GET", "/api/admin/stats/views")).status, 401, "sans session");
+});
+
+test("health : état minimal, sans fuite", async () => {
+  const r = await call("GET", "/api/health");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true });
+  assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
+  assert.equal((await call("POST", "/api/health")).status, 405);
 });

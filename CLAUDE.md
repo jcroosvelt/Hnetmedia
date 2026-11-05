@@ -1,7 +1,7 @@
 # HNet Media — contexte projet (lu automatiquement par Claude Code)
 
 Média en ligne « L'actualité sans frontières » (Joseph / J. Roosvelt Jean Charles, Pétion-Ville, Haïti).
-Site statique multi-pages généré par `build.js` (Node) — **Phase 2 en cours** : contenu dans Neon (PostgreSQL), hébergement **Vercel** (déploiement automatique à chaque push sur `main`).
+Site statique multi-pages généré par `build.js` (Node) — **Phase 2 en cours** : contenu dans Neon (PostgreSQL), hébergement **Vercel** relié au dépôt GitHub `jcroosvelt/hnetmedia` : **chaque modification est commitée et poussée sur `main`**, ce qui déclenche le déploiement (pas de déploiement Vercel direct).
 
 ## Règles absolues
 1. **Ne pas refaire le design.** `assets/style.css`, logo, couleurs (marine, orange, cyan), Playfair Display + Inter, header, ticker, cartes, footer : intouchables. Toute nouvelle UI réutilise les classes existantes. Pas de nouveau gradient, pas de nouvelle couleur.
@@ -27,7 +27,7 @@ content/*.json   ─┘  (repli hors ligne)
 - `pages/*.html` : fragments des pages fixes (à-propos, équipe, charte, partenaires, publicité, carrières, contact, légales, plan du site, recherche, 404)
 - `build.js` : génère accueil, 8 rubriques, `/article/{slug}.html`, `/auteur/{id}.html`, `/tag/{slug}.html`, pages fixes, `content/search-index.json`, `sitemap.xml`, `rss.xml`, `robots.txt`, JSON-LD (NewsArticle, BreadcrumbList, Organization, WebSite+SearchAction)
 - `assets/` : `style.css`, `main.js` (date, nav active, FR/EN, partage, redirection des anciens `#/route`), `contact.js` / `newsletter.js` (`CONTACT_ENDPOINT` / `NEWSLETTER_ENDPOINT` vides), `search.js` (recherche client sur l'index)
-- `admin/index.html` : outil local qui génère du JSON d'article — **sans authentification**, `noindex`, `Disallow` dans robots.txt
+- `admin/index.html` : ancien outil local qui génère du JSON d'article — **sans authentification**, il n'est **plus copié dans `dist/`** (remplacé par l'admin sécurisé de la phase 2). `dist/content/` ne contient que `search-index.json`.
 - `vercel.json` (build `node build.js`, sortie `dist/`, URLs propres), `.htaccess` (Apache) — Netlify n'est pas utilisé
 - `serve.js` : serveur local avec URLs propres → `npm run dev` ou `node build.js && node serve.js`
 

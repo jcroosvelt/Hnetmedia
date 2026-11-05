@@ -692,8 +692,10 @@ function run() {
   buildRobots();
 
   copyDir(path.join(ROOT, "assets"), path.join(DIST_DIR, "assets"));
-  copyDir(CONTENT_DIR, path.join(DIST_DIR, "content"));
-  copyDir(path.join(ROOT, "admin"), path.join(DIST_DIR, "admin"));
+  // Sécurité : on ne publie PAS content/*.json (contiendrait brouillons et
+  // articles programmés) ni l'ancien outil admin/ sans authentification.
+  // Seul content/search-index.json (articles publics uniquement) est généré
+  // plus haut pour la recherche.
   ["favicon.svg", "favicon.ico", "favicon-16.png", "favicon-32.png", "favicon-48.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest", ".htaccess"]
     .forEach((f) => { if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(DIST_DIR, f)); });
 

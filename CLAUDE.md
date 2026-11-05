@@ -6,7 +6,9 @@ Site statique multi-pages généré par `build.js` (Node) — **Phase 2 en cours
 ## Règles absolues
 1. **Ne pas refaire le design.** `assets/style.css`, logo, couleurs (marine, orange, cyan), Playfair Display + Inter, header, ticker, cartes, footer : intouchables. Toute nouvelle UI réutilise les classes existantes. Pas de nouveau gradient, pas de nouvelle couleur.
 2. **Base de données : Neon (PostgreSQL), projet `hnetmedia` (`holy-dawn-31853096`, région aws-us-east-1, base `hnetmedia`).**
-   - Toujours travailler sur la branche Neon **`dev`** (`br-wispy-dream-bcr1umhf`), jamais directement sur `main` (branche de prod).
+   - **Décision du propriétaire (5 nov. 2026) : le site utilise directement la branche Neon `main`** (`br-fancy-surf-bci37es5`, production). Schéma et données de départ y sont appliqués (migrations 0001 et 0002 + import des JSON).
+   - La branche `dev` (`br-wispy-dream-bcr1umhf`) reste disponible comme terrain d'essai : à utiliser pour toute migration ou opération risquée, avant de la rejouer sur `main`.
+   - Comme `main` contient de vraies données : sauvegarde ou branche de secours avant toute migration.
    - Demander confirmation au propriétaire avant tout SQL destructif (`DROP`, `TRUNCATE`, `DELETE`/`UPDATE` de masse).
    - Schéma uniquement via des migrations SQL versionnées dans `/db/migrations`.
    - Secrets (`DATABASE_URL`, clés API) : uniquement dans les variables d'environnement Vercel et un `.env.local` ignoré par git. Jamais dans le code, les logs ou les commits. Ne jamais demander de mot de passe.
@@ -18,7 +20,7 @@ Site statique multi-pages généré par `build.js` (Node) — **Phase 2 en cours
 
 ## Architecture
 ```
-Neon (dev/main)  ─┐
+Neon (main ; dev = essais)  ─┐
                    ├─node build.js──▶  dist/  ──▶  Vercel (push sur main = déploiement)
 content/*.json   ─┘  (repli hors ligne)
 ```

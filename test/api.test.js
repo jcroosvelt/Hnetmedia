@@ -19,7 +19,7 @@ Object.assign(process.env, {
   DB_DRIVER: "pg",
   DATABASE_URL: DB_URL,
   HASH_SECRET: "secret-de-test-0123456789abcdef0123456789",
-  BREVO_API_KEY: "test", EMAIL_FROM: "newsletter@example.org", EMAIL_TEST_SINK: "1",
+  RESEND_API_KEY: "test", EMAIL_FROM: "newsletter@example.org", EMAIL_TEST_SINK: "1",
   ADMIN_SETUP_TOKEN: "code-installation-test-0123456789",
   SITE_URL: "https://www.hnetmedia.com",
 });
@@ -107,10 +107,10 @@ test("contact : protections et enregistrement réel", async () => {
 test("newsletter : double confirmation, désinscription, honnêteté", async () => {
   const sub = (extra = {}, h = ip(20)) => call("POST", "/api/newsletter/subscribe", { body: { email: "Lecteur@Example.org", consent: true, hp: "", ts: formTs(), ...extra }, headers: h });
 
-  const key = process.env.BREVO_API_KEY; delete process.env.BREVO_API_KEY;
+  const key = process.env.RESEND_API_KEY; delete process.env.RESEND_API_KEY;
   const off = await sub({}, ip(21));
   assert.equal(off.status, 503, "sans fournisseur e-mail : service non activé, pas de fausse confirmation");
-  process.env.BREVO_API_KEY = key;
+  process.env.RESEND_API_KEY = key;
   assert.equal((await db().query("SELECT count(*)::int n FROM subscribers"))[0].n, 0);
 
   assert.equal((await sub({ consent: false })).status, 400, "consentement obligatoire");
@@ -403,4 +403,51 @@ test("JSON-LD : un titre ne peut pas fermer la balise <script>", () => {
   const out = jsonForHtml(piege);
   assert.ok(!/[<>&]/.test(out) && !out.includes("</script>"), "aucun < > & brut dans le JSON intégré à la page");
   assert.deepEqual(JSON.parse(out), piege, "le JSON se relit à l'identique");
+});
+
+test("e-mails : alerte à l'équipe possible sans domaine, newsletter refusée tant qu'aucun domaine n'est vérifié", async () => {
+  const email = require("../server/email");
+  const body = (extra = {}) => ({ name: "Jean <b>Test</b>", email: "lecteur@example.org", category: "Rédaction", subject: "Alerte", message: "Message de test assez long pour passer.", hp: "", ts: formTs(), ...extra });
+  const saved = { from: process.env.EMAIL_FROM, notify: process.env.CONTACT_NOTIFY_EMAIL };
+  try {
+    process.env.EMAIL_FROM = "onboarding@resend.dev";
+    process.env.CONTACT_NOTIFY_EMAIL = "equipe@example.org";
+    assert.equal(email.isConfigured(), true);
+    assert.equal(email.canSendToPublic(), false, "expéditeur de test Resend : pas d'envoi vers le public");
+
+    const before = sent().length;
+    const r = await call("POST", "/api/contact", { body: body(), headers: ip(120) });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(sent().length, before + 1, "une alerte est envoyée à l'équipe");
+    const m = sent()[sent().length - 1];
+    assert.equal(m.to, "equipe@example.org");
+    assert.equal(m.replyTo, "lecteur@example.org", "répondre écrit au visiteur");
+    assert.match(m.from, /onboarding@resend\.dev/);
+    assert.ok(!m.html.includes("<b>Test</b>") && m.html.includes("&lt;b&gt;"), "le contenu du visiteur est échappé dans l'e-mail");
+
+    const n = sent().length;
+    const nl = await call("POST", "/api/newsletter/subscribe", { body: { email: "x@example.org", consent: true, hp: "", ts: formTs() }, headers: ip(121) });
+    assert.equal(nl.status, 503, "newsletter non activée sans domaine vérifié");
+    assert.equal(sent().length, n, "aucun e-mail envoyé à un lecteur");
+    assert.equal((await db().query("SELECT count(*)::int n FROM subscribers WHERE email = 'x@example.org'"))[0].n, 0, "aucun abonné enregistré à tort");
+
+    process.env.EMAIL_FROM = "HNet <newsletter@example.org>";
+    assert.equal(email.canSendToPublic(), true, "domaine propre : envoi vers le public possible");
+
+    delete process.env.CONTACT_NOTIFY_EMAIL;
+    const k = sent().length;
+    assert.equal((await call("POST", "/api/contact", { body: body(), headers: ip(122) })).status, 200, "le contact marche aussi sans aucune alerte");
+    assert.equal(sent().length, k, "pas d'alerte si aucune adresse n'est configurée");
+  } finally {
+    process.env.EMAIL_FROM = saved.from;
+    if (saved.notify === undefined) delete process.env.CONTACT_NOTIFY_EMAIL; else process.env.CONTACT_NOTIFY_EMAIL = saved.notify;
+  }
+});
+
+test("contact : « Droit de réponse » accepté (migration 0004) et refus d'un type inventé", async () => {
+  const cats = (await db().query("SELECT value FROM site_settings WHERE key = 'contactCategories'"))[0].value;
+  assert.ok(cats.includes("Droit de réponse") && cats[cats.length - 1] === "Autre", "liste : " + cats.join(", "));
+  const body = (c) => ({ name: "Marie", email: "marie@example.org", category: c, message: "Je souhaite exercer mon droit de réponse.", hp: "", ts: formTs() });
+  assert.equal((await call("POST", "/api/contact", { body: body("Droit de réponse"), headers: ip(130) })).status, 200);
+  assert.equal((await call("POST", "/api/contact", { body: body("Type inventé"), headers: ip(130) })).status, 400);
 });

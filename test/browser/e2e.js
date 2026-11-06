@@ -7,7 +7,7 @@ const ADMIN_URL = "postgres://postgres@127.0.0.1:5433/postgres";
 Object.assign(process.env, {
   DB_DRIVER: "pg", DATABASE_URL: "postgres://postgres@127.0.0.1:5433/hnet_e2e",
   HASH_SECRET: "secret-de-test-0123456789abcdef0123456789", ADMIN_SETUP_TOKEN: "code-installation-test-0123456789",
-  SITE_URL: "http://127.0.0.1", BREVO_API_KEY: "t", EMAIL_FROM: "a@b.co", EMAIL_TEST_SINK: "1",
+  SITE_URL: "http://127.0.0.1", RESEND_API_KEY: "t", EMAIL_FROM: "a@b.co", EMAIL_TEST_SINK: "1",
 });
 const { chromium, devices } = require("playwright");
 const { Client } = require("pg");

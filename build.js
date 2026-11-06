@@ -565,6 +565,10 @@ function injectDynamicBlocks(html, filename) {
       : emptyState("👥", "Fiches de l'équipe à venir", "Les profils des journalistes s'afficheront ici dès qu'ils seront ajoutés.");
     html = html.replace('<div id="teamList"><!--TEAM--></div>', `<div id="teamList">${teamHtml}</div>`);
   }
+  if (filename === "contact.html") {
+    const cats = (settings.contactCategories && settings.contactCategories.length ? settings.contactCategories : ["Autre"]);
+    html = html.replace("<!--CONTACT_CATEGORIES-->", cats.map((c) => `<option>${escAttr(c)}</option>`).join("\n        "));
+  }
   if (filename === "partenaires.html" && settings.partners && settings.partners.length) {
     const partnersHtml = `<div class="static-grid">${settings.partners.map((p) => `<a class="static-card" href="${escAttr(p.link)}" target="_blank" rel="noopener"><strong>${escAttr(p.name)}</strong><span>${escAttr(p.description || "")}</span></a>`).join("")}</div>`;
     html = html.replace(/<div id="partnersList">[\s\S]*?<\/div>\s*<\/div>/, `<div id="partnersList">${partnersHtml}</div></div>`);

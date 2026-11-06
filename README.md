@@ -34,7 +34,8 @@ Vercel (Settings → Environment Variables) et dans `.env.local` (ignoré par gi
 
 | Fonction | État |
 |---|---|
-| Formulaire de contact et newsletter sur le site | API prête, **non branchée** au site (étape à venir) ; e-mails : fournisseur à choisir |
+| Formulaire de contact | **Actif** : le message est enregistré (`/admin › Messages`). Alerte par e-mail à l'équipe : facultative (Resend) |
+| Newsletter | API prête, **non branchée** au site : exige un nom de domaine vérifié chez Resend (pas encore acheté) |
 | Mise à jour du site à chaque publication | Prête côté code ; il reste à créer le Deploy Hook Vercel (`VERCEL_DEPLOY_HOOK_URL`) |
 | Publication à heure programmée | Pas de déclencheur horaire : l'article paraît au premier déploiement après sa date |
 | Téléversement d'images | Non : adresse https saisie à la main |

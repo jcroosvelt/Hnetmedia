@@ -1,38 +1,30 @@
 /* ══════════════════════════════════════════════
    HNet Media — contact.js
-   Formulaire de contact réel côté client.
-   ⚠️ PHASE 1 (sans base de données / backend) :
-   ce script valide et prépare l'envoi, mais a besoin
-   d'un CONTACT_ENDPOINT (Formspree, Netlify Forms,
-   Brevo, ou votre propre API) pour envoyer réellement
-   le message. Tant qu'aucun endpoint n'est configuré,
-   le formulaire l'indique honnêtement plutôt que
-   d'afficher une fausse confirmation.
+   Formulaire de contact : envoi réel vers /api/contact.
+   Le message est enregistré côté serveur (consultable dans
+   l'espace rédaction). Aucune fausse confirmation : le texte
+   de succès ou d'erreur affiché est celui renvoyé par le serveur.
    ══════════════════════════════════════════════ */
 (function () {
   "use strict";
 
-  // 👉 À CONFIGURER EN PHASE 2 : URL de votre service d'envoi de formulaire.
-  // Exemples compatibles : "https://formspree.io/f/VOTRE_ID",
-  // un endpoint Netlify Forms, ou votre propre API.
-  var CONTACT_ENDPOINT = "";
-
   var form = document.getElementById("contactForm");
   if (!form) return;
   var msgBox = document.getElementById("contactMsg");
+  var openedAt = Date.now(); // anti-robots : un humain met plus de quelques secondes à écrire
 
   function showMsg(text, isError) {
     msgBox.hidden = false;
     msgBox.textContent = text;
-    msgBox.style.background = isError ? "#FEE2E2" : "#FEF3C7";
-    msgBox.style.borderColor = isError ? "#DC2626" : "#F59E0B";
-    msgBox.style.color = isError ? "#7A1212" : "#7A5A00";
+    msgBox.style.background = isError ? "#FEE2E2" : "#FFFFFF";
+    msgBox.style.borderColor = isError ? "#DC2626" : "#059669";
+    msgBox.style.color = isError ? "#7A1212" : "#111827";
   }
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var data = new FormData(form);
-    var email = String(data.get("email") || "");
+    var email = String(data.get("email") || "").trim();
     var name = String(data.get("name") || "").trim();
     var message = String(data.get("message") || "").trim();
 
@@ -40,11 +32,12 @@
       showMsg("Merci de renseigner votre nom, un email valide et un message.", true);
       return;
     }
-
-    if (!CONTACT_ENDPOINT) {
-      // Mode démonstration honnête : pas de backend branché.
-      console.info("[HNet Media] Formulaire de contact prêt. Configurez CONTACT_ENDPOINT dans assets/contact.js pour activer l'envoi réel.", Object.fromEntries(data));
-      showMsg("Ce formulaire est prêt mais aucun service d'envoi n'est encore configuré (Phase 1 — sans backend). Votre message n'a pas été transmis. Contactez-nous directement à redaction@hnetmedia.com en attendant.", false);
+    if (!data.get("category")) {
+      showMsg("Merci de choisir le type de demande.", true);
+      return;
+    }
+    if (message.length < 10) {
+      showMsg("Votre message est trop court (10 caractères minimum).", true);
       return;
     }
 
@@ -53,21 +46,33 @@
     submitBtn.disabled = true;
     submitBtn.textContent = "Envoi en cours…";
 
-    fetch(CONTACT_ENDPOINT, {
+    fetch("/api/contact", {
       method: "POST",
-      headers: { Accept: "application/json" },
-      body: data
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        name: name,
+        email: email,
+        category: String(data.get("category") || ""),
+        subject: String(data.get("subject") || "").trim(),
+        message: message,
+        hp: String(data.get("hp") || ""),
+        ts: openedAt
+      })
     })
       .then(function (res) {
-        if (res.ok) {
-          showMsg("Merci, votre message a bien été envoyé. La rédaction vous répondra rapidement.", false);
-          form.reset();
-        } else {
-          showMsg("L'envoi a échoué. Merci de réessayer ou de nous écrire directement à redaction@hnetmedia.com.", true);
-        }
+        return res.json().catch(function () { return null; }).then(function (body) {
+          if (res.ok && body && body.ok) {
+            showMsg(body.message || "Votre message a bien été reçu.", false);
+            form.reset();
+            openedAt = Date.now();
+          } else {
+            showMsg((body && body.error) || "L'envoi a échoué. Merci de réessayer un peu plus tard.", true);
+            openedAt = Date.now() - 4000; // un nouvel essai immédiat n'est pas pris pour un robot
+          }
+        });
       })
       .catch(function () {
-        showMsg("L'envoi a échoué (connexion). Merci de réessayer ou de nous écrire directement à redaction@hnetmedia.com.", true);
+        showMsg("L'envoi a échoué (connexion). Merci de réessayer.", true);
       })
       .finally(function () {
         submitBtn.disabled = false;

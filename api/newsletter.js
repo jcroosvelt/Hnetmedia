@@ -23,7 +23,8 @@ async function subscribe(req, res) {
   checkOrigin(req);
   const body = await readBody(req);
   antispam.check(body, { minMs: 1500 });
-  if (!email.isConfigured()) throw new HttpError(503, "L'inscription à la newsletter n'est pas encore activée.");
+  // Écrire à des lecteurs exige un domaine d'envoi vérifié : sinon on refuse honnêtement.
+  if (!email.canSendToPublic()) throw new HttpError(503, "L'inscription à la newsletter n'est pas encore activée.");
 
   const addr = v.email(body, "email");
   if (body.consent !== true && body.consent !== "true" && body.consent !== "on") {

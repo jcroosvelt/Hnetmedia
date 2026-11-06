@@ -47,7 +47,7 @@ module.exports = handler(["POST"], async (req, res) => {
       subject: `[Contact – ${msg.category}] ${msg.subject || "Nouveau message"}`,
       text: `De : ${msg.name} <${msg.email}>\nObjet : ${msg.category}\n\n${msg.message}`,
       html: `<p><strong>De :</strong> ${e(msg.name)} &lt;${e(msg.email)}&gt;<br><strong>Objet :</strong> ${e(msg.category)}</p><p>${e(msg.message).replace(/\n/g, "<br>")}</p>`,
-      headers: { "Reply-To": msg.email },
+      replyTo: msg.email,
     }).catch((err) => console.error("[contact] notification non envoyée :", err.status || ""));
   }
 

@@ -8,23 +8,19 @@
       <div class="static-card"><strong>Publicité &amp; partenariats</strong><span>partenariats@hnetmedia.com</span></div>
     </div>
     <h2>Formulaire de contact</h2>
-    <form class="contact-form" id="contactForm">
-      <input type="text" name="name" placeholder="Votre nom" required>
-      <input type="email" name="email" placeholder="Votre adresse email" required>
-      <select name="category" required>
+    <form class="contact-form" id="contactForm" novalidate>
+      <input type="text" name="name" placeholder="Votre nom" aria-label="Votre nom" autocomplete="name" maxlength="100" required>
+      <input type="email" name="email" placeholder="Votre adresse email" aria-label="Votre adresse email" autocomplete="email" maxlength="254" required>
+      <select name="category" aria-label="Type de demande" required>
         <option value="" disabled selected>Type de demande</option>
-        <option>Rédaction</option>
-        <option>Correction</option>
-        <option>Droit de réponse</option>
-        <option>Publicité</option>
-        <option>Partenariat</option>
-        <option>Recrutement</option>
-        <option>Autre</option>
+        <!--CONTACT_CATEGORIES-->
       </select>
-      <input type="text" name="subject" placeholder="Sujet">
-      <textarea name="message" placeholder="Votre message" required></textarea>
+      <input type="text" name="subject" placeholder="Sujet" aria-label="Sujet" maxlength="200">
+      <textarea name="message" placeholder="Votre message" aria-label="Votre message" maxlength="5000" required></textarea>
+      <!-- Champ piège anti-robots : invisible pour les humains, doit rester vide -->
+      <div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Ne pas remplir<input type="text" name="hp" tabindex="-1" autocomplete="off"></label></div>
       <button type="submit">Envoyer le message</button>
     </form>
-    <div id="contactMsg" class="dev-notice" hidden></div>
+    <div id="contactMsg" class="dev-notice" role="status" aria-live="polite" hidden></div>
   </div>
 </div>

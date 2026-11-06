@@ -14,7 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-require("./lib/env")();
+require("../server/env")();
 const splitSql = require("./lib/split-sql");
 
 const DIR = path.join(__dirname, "migrations");

@@ -114,7 +114,7 @@ async function meta(req, res) {
     db.query("SELECT id, name FROM authors WHERE active ORDER BY name"),
   ]);
   const roles = auth.can(s, "user.manage") ? await db.query("SELECT code, label, description FROM roles ORDER BY id") : [];
-  send(res, 200, { ok: true, categories, tags, authors, roles, permissions: [...s.perms].sort() });
+  send(res, 200, { ok: true, categories, tags, authors, roles, permissions: [...s.perms].sort(), siteRebuild: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL) });
 }
 
 /* ── Articles ── */

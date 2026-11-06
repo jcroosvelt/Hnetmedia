@@ -224,6 +224,21 @@
       S.user = r.user; S.csrf = r.csrfToken; S.perms = new Set(r.permissions);
     });
   }
+  // L'éditeur (≈ 440 Ko) n'est téléchargé qu'à l'ouverture d'un article.
+  var editorLoading = null;
+  function loadEditor() {
+    if (window.HNetEditor) return Promise.resolve();
+    if (!editorLoading) {
+      editorLoading = new Promise(function (resolve, reject) {
+        var sc = document.createElement("script");
+        sc.src = "/admin/editor.js";
+        sc.onload = resolve;
+        sc.onerror = function () { editorLoading = null; reject(new Error("Impossible de charger l'éditeur de texte. Vérifiez votre connexion et réessayez.")); };
+        document.head.appendChild(sc);
+      });
+    }
+    return editorLoading;
+  }
   function ensureMeta() {
     if (S.meta) return Promise.resolve(S.meta);
     return api("GET", "meta").then(function (m) { S.meta = m; return m; });
@@ -366,7 +381,7 @@
 
   /* ───────── Articles : éditeur ───────── */
   function renderArticle(view, id) {
-    return Promise.all([ensureMeta(), api("GET", "articles/" + encodeURIComponent(id))]).then(function (res) {
+    return Promise.all([ensureMeta(), api("GET", "articles/" + encodeURIComponent(id)), loadEditor()]).then(function (res) {
       var meta = res[0];
       var a = res[1].article;
       var rights = a.rights;
@@ -505,7 +520,7 @@
         if (rights.publish && a.status !== "publie") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Programmer…", onclick: function () {
           var soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
           var local = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-          ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer" }).then(function (v) {
+          ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer", intro: "L'article apparaîtra sur le site au premier déploiement qui suit cette date. Une mise à jour automatique à heure fixe n'est pas encore en place." }).then(function (v) {
             if (v) changeStatus("programme", { publishedAt: new Date(v.when).toISOString() }, "Publication programmée.");
           });
         } }));
@@ -592,7 +607,9 @@
 
       var right = h("div", { class: "hn-side" },
         h("div", { class: "hn-card hn-form" }, h("h2", { text: "Publication" }), statusBox, actionsBox, sponsorBox,
-          h("div", { class: "correction-note", style: "margin-top:14px", text: "Pour l'instant, le site public est encore généré depuis les fichiers du dépôt : un article publié ici n'y apparaîtra qu'une fois le build relié à la base (prochaine étape)." })),
+          h("div", { class: meta.siteRebuild ? "update-note" : "correction-note", style: "margin-top:14px", text: meta.siteRebuild
+          ? "Publier, dépublier, archiver ou corriger met le site à jour automatiquement (1 à 2 minutes)."
+          : "La mise à jour automatique du site n'est pas encore configurée : après une publication, le site ne changera qu'au prochain déploiement." })),
         h("div", { class: "hn-card hn-form" }, h("h2", { text: "Classement" }),
           label("Rubrique", "a-cat"), f.category, label("Type de contenu", "a-type"), f.type,
           label("Auteur", "a-author"), f.author, label("Ou signature libre", "a-sign"), f.signature,

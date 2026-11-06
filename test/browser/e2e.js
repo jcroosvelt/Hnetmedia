@@ -20,7 +20,6 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   const c = new Client({ connectionString: ADMIN_URL }); await c.connect();
   await c.query("DROP DATABASE IF EXISTS hnet_e2e WITH (FORCE)"); await c.query("CREATE DATABASE hnet_e2e"); await c.end();
   execFileSync("node", ["db/migrate.js"], { cwd: ROOT, env: process.env, stdio: "pipe" });
-  execFileSync("node", ["db/import-json.js"], { cwd: ROOT, env: process.env, stdio: "pipe" });
   const server = await start(ROOT + "/dist"); const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
 
@@ -51,7 +50,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.fill("#l-email", loginEmail); await page.fill("#l-pw", "un mot de passe solide 2026"); await page.click("button[type=submit]");
     await page.waitForSelector(".hn-tabs a"); ok(true, "connexion réussie");
     const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 6, "onglets administrateur : " + tabs.join(", "));
-    await page.waitForSelector(".hn-table");
+    await page.waitForSelector(".hn-table, .empty-state");
     await page.screenshot({ path: `${SHOTS}/${name}-3-liste.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (liste)");
 

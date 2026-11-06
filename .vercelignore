@@ -1,0 +1,7 @@
+# Fichiers inutiles au déploiement (ni au site, ni aux fonctions) : envoi et builds plus rapides.
+test/
+db/
+admin-app/editor.src.js
+*.md
+.env.example
+.gitignore

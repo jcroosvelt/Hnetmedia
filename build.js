@@ -2,33 +2,29 @@
 /**
  * HNet Media — build.js
  * ─────────────────────────────────────────────────────────
- * Générateur de site statique "maison", sans base de données.
- * Lit /content/*.json (la couche de contenu) et génère un
- * site multi-pages complet dans /dist : vraies URLs, vraies
+ * Générateur de site statique "maison". Lit le contenu PUBLIC
+ * dans Neon (articles publiés, rubriques, auteurs, réglages…) et
+ * génère le site multi-pages complet dans /dist : vraies URLs,
  * données structurées, sitemap.xml et rss.xml réels.
  *
- * Usage :  node build.js
+ * Usage :  node build.js        (DATABASE_URL requise : voir .env.example)
  *
- * Quand une vraie base de données sera branchée (Phase 2),
- * il suffira de remplacer les fonctions loadJSON() ci-dessous
- * par de vraies requêtes — tout le reste (rendu, SEO,
- * sitemap, flux RSS) continue de fonctionner à l'identique.
+ * Aucun article en brouillon, programmé ou archivé n'est lu.
+ * Sur Vercel, un nouveau build est déclenché à chaque publication.
  * ─────────────────────────────────────────────────────────
  */
 "use strict";
 const fs = require("fs");
 const path = require("path");
+require("./server/env")(); // charge .env.local en local (sans effet sur Vercel)
+const { loadContent } = require("./server/content");
 
 const ROOT = __dirname;
-const CONTENT_DIR = path.join(ROOT, "content");
 const PAGES_DIR = path.join(ROOT, "pages");
 const PARTIALS_DIR = path.join(ROOT, "partials");
 const DIST_DIR = path.join(ROOT, "dist");
 
 /* ── UTILITAIRES ── */
-function loadJSON(name) {
-  return JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, name), "utf8"));
-}
 function readFile(p) {
   return fs.readFileSync(p, "utf8");
 }
@@ -79,42 +75,65 @@ function formatDateTimeFR(iso) {
     " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ── CHARGEMENT DU CONTENU ── */
-const settings = loadJSON("site-settings.json");
-const categories = loadJSON("categories.json");
-const authors = loadJSON("authors.json");
-const tagsData = loadJSON("tags.json");
-const allArticles = loadJSON("articles.json");
-
-const catBySlug = Object.fromEntries(categories.map((c) => [c.slug, c]));
-const authorById = Object.fromEntries(authors.map((a) => [a.id, a]));
-
+/* ── CONTENU (lu dans Neon avant la génération, voir init()) ── */
+let settings, categories, authors, allArticles, catBySlug, authorById, publishedArticles, BASE_URL;
+let headerHtml, footerHtml, orgLd, websiteLd;
 const NOW = new Date();
-const publishedArticles = allArticles
-  .filter((a) => a.status === "publie" && (!a.publishedAt || new Date(a.publishedAt) <= NOW))
-  .map((a) => ({
-    ...a,
-    readingTime: a.readingTime || estimateReadingTime(a.content),
-    author: a.authorId ? authorById[a.authorId] : (a.authorName ? { name: a.authorName } : null),
-  }))
-  .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
 
-if (allArticles.length && !publishedArticles.length) {
-  console.log("ℹ️  Aucun article publié pour le moment (uniquement des brouillons/exemples). Le site affichera des états vides professionnels — c'est le comportement attendu tant qu'aucun article réel n'est publié.");
+function init(content) {
+  settings = content.settings;
+  categories = content.categories;
+  authors = content.authors;
+  allArticles = content.articles;
+
+  catBySlug = Object.fromEntries(categories.map((c) => [c.slug, c]));
+  authorById = Object.fromEntries(authors.map((a) => [a.id, a]));
+
+  publishedArticles = allArticles
+    .filter((a) => a.status === "publie" && (!a.publishedAt || new Date(a.publishedAt) <= NOW))
+    .map((a) => ({
+      ...a,
+      readingTime: a.readingTime || estimateReadingTime(a.content),
+      author: a.authorId ? authorById[a.authorId] : (a.authorName ? { name: a.authorName } : null),
+    }))
+    .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+
+  if (!publishedArticles.length) {
+    console.log("ℹ️  Aucun article publié pour le moment. Le site affichera des états vides professionnels — comportement attendu tant qu'aucun article n'est publié dans /admin.");
+  }
+
+  BASE_URL = settings.baseUrl.replace(/\/$/, "");
+
+  /* ── PARTIELS ── */
+  headerHtml = readFile(path.join(PARTIALS_DIR, "header.html"));
+  footerHtml = readFile(path.join(PARTIALS_DIR, "footer.html"));
+
+  // Ticker : alimenté par les articles marqués "urgent" ; sinon message neutre honnête.
+  const urgentArticles = publishedArticles.filter((a) => a.urgent);
+  const tickerItems = urgentArticles.length
+    ? urgentArticles.map((a) => `<a href="/article/${a.slug}.html" class="ticker-item">◆ ${escAttr(a.title)}</a>`).join("")
+    : `<span class="ticker-item">◆ Bienvenue sur HNet Media — aucune alerte urgente pour le moment</span>`;
+  headerHtml = headerHtml.replace("<!--TICKER_ITEMS-->", tickerItems + tickerItems); // dupliqué pour un défilement continu
+
+  orgLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: settings.siteName,
+    url: BASE_URL,
+    logo: BASE_URL + "/icon-512.png",
+  };
+  websiteLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: settings.siteName,
+    url: BASE_URL,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${BASE_URL}/recherche.html?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  };
 }
-
-const BASE_URL = settings.baseUrl.replace(/\/$/, "");
-
-/* ── PARTIELS ── */
-let headerHtml = readFile(path.join(PARTIALS_DIR, "header.html"));
-const footerHtml = readFile(path.join(PARTIALS_DIR, "footer.html"));
-
-// Ticker : alimenté par les articles marqués "urgent" ; sinon message neutre honnête.
-const urgentArticles = publishedArticles.filter((a) => a.urgent);
-const tickerItems = urgentArticles.length
-  ? urgentArticles.map((a) => `<a href="/article/${a.slug}.html" class="ticker-item">◆ ${escAttr(a.title)}</a>`).join("")
-  : `<span class="ticker-item">◆ Bienvenue sur HNet Media — aucune alerte urgente pour le moment</span>`;
-headerHtml = headerHtml.replace("<!--TICKER_ITEMS-->", tickerItems + tickerItems); // dupliqué pour un défilement continu
 
 /* ── SQUELETTE DE PAGE ── */
 function wrapPage({ title, description, canonicalPath, ogImage, bodyHtml, structuredData = [], noindex = false, extraHead = "" }) {
@@ -149,7 +168,6 @@ ${noindex ? '<meta name="robots" content="noindex, nofollow">' : '<meta name="ro
 <link rel="manifest" href="/site.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css">
-<link rel="stylesheet" href="/assets/article-body.css">
 ${jsonLd}
 ${extraHead}
 </head>
@@ -210,25 +228,6 @@ function breadcrumbLd(items) {
   };
 }
 
-const orgLd = {
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  name: settings.siteName,
-  url: BASE_URL,
-  logo: BASE_URL + "/icon-512.png",
-};
-const websiteLd = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  name: settings.siteName,
-  url: BASE_URL,
-  potentialAction: {
-    "@type": "SearchAction",
-    target: `${BASE_URL}/recherche.html?q={search_term_string}`,
-    "query-input": "required name=search_term_string",
-  },
-};
-
 /* ══════════════════════════════════════════════
    1) PAGE D'ACCUEIL
    ══════════════════════════════════════════════ */
@@ -268,7 +267,7 @@ function buildHome() {
       </div>
     </div>`;
   } else {
-    heroHtml = `<div class="hero">${emptyState("📰", "Aucun article publié pour le moment", "La une s'affichera automatiquement dès qu'un premier article sera publié via <code>content/articles.json</code>.")}</div>`;
+    heroHtml = `<div class="hero">${emptyState("📰", "Aucun article publié pour le moment", "La une s'affichera automatiquement dès qu'un premier article sera publié.")}</div>`;
   }
 
   const latestHtml = latest.length
@@ -371,9 +370,9 @@ function buildArticlePages() {
       ? `<div class="sources-block"><h3>Sources</h3><ul>${a.sources.map((s) => `<li><a href="${escAttr(s.url)}" target="_blank" rel="noopener nofollow">${escAttr(s.name)}</a>${s.description ? " — " + escAttr(s.description) : ""}</li>`).join("")}</ul></div>`
       : "";
 
-    const correctionHtml = a.correction
-      ? `<div class="correction-note">✏️ <strong>Correction</strong> (${formatDateTimeFR(a.correction.date)}) — ${escAttr(a.correction.text)}</div>`
-      : "";
+    const correctionHtml = (a.corrections || [])
+      .map((c) => `<div class="correction-note">✏️ <strong>Correction</strong> (${formatDateTimeFR(c.date)}) — ${escAttr(c.text)}</div>`)
+      .join("");
 
     const updatedHtml = a.updatedAt
       ? `<div class="update-note">Mis à jour le ${formatDateTimeFR(a.updatedAt)}.</div>`
@@ -455,6 +454,7 @@ function buildArticlePages() {
     };
 
     writeFile(`article/${a.slug}.html`, wrapPage({
+      extraHead: '<link rel="stylesheet" href="/assets/article-body.css">',
       title: `${seoTitle} — ${settings.siteName}`,
       description: seoDesc,
       canonicalPath: `/article/${a.slug}.html`,
@@ -561,8 +561,8 @@ function injectDynamicBlocks(html, filename) {
           <a class="static-card" href="/auteur/${a.id}.html" style="text-decoration:none">
             <strong>${escAttr(a.name)}</strong><span>${escAttr(a.role || "")}</span>
           </a>`).join("")}</div>`
-      : emptyState("👥", "Fiches de l'équipe à venir", "Les profils des journalistes s'afficheront ici dès qu'ils seront ajoutés dans <code>content/authors.json</code>.");
-    html = html.replace('<div id="teamList"><!-- Généré depuis content/authors.json --></div>', `<div id="teamList">${teamHtml}</div>`);
+      : emptyState("👥", "Fiches de l'équipe à venir", "Les profils des journalistes s'afficheront ici dès qu'ils seront ajoutés.");
+    html = html.replace('<div id="teamList"><!--TEAM--></div>', `<div id="teamList">${teamHtml}</div>`);
   }
   if (filename === "partenaires.html" && settings.partners && settings.partners.length) {
     const partnersHtml = `<div class="static-grid">${settings.partners.map((p) => `<a class="static-card" href="${escAttr(p.link)}" target="_blank" rel="noopener"><strong>${escAttr(p.name)}</strong><span>${escAttr(p.description || "")}</span></a>`).join("")}</div>`;
@@ -697,15 +697,24 @@ function run() {
   // de l'éditeur (editor.src.js) n'est pas publié.
   copyDir(path.join(ROOT, "admin-app"), path.join(DIST_DIR, "admin"));
   fs.rmSync(path.join(DIST_DIR, "admin", "editor.src.js"), { force: true });
-  // Sécurité : on ne publie PAS content/*.json (contiendrait brouillons et
-  // articles programmés) ni l'ancien outil admin/ sans authentification.
-  // Seul content/search-index.json (articles publics uniquement) est généré
-  // plus haut pour la recherche.
-  ["favicon.svg", "favicon.ico", "favicon-16.png", "favicon-32.png", "favicon-48.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest", ".htaccess"]
+  // Seul dist/content/search-index.json (articles publics uniquement) est généré
+  // plus haut, pour la recherche. Aucun brouillon ni article programmé n'est lu.
+  ["favicon.svg", "favicon.ico", "favicon-16.png", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest"]
     .forEach((f) => { if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(DIST_DIR, f)); });
 
   console.log(`✅ Build terminé : ${publishedArticles.length} article(s) publié(s), ${categories.length} rubriques, ${authors.length} auteur(s).`);
   console.log(`📁 Site généré dans /dist — prêt à déployer.`);
 }
 
-run();
+(async () => {
+  if (!process.env.DATABASE_URL) {
+    console.error("❌ DATABASE_URL absente : le site est construit à partir de la base Neon.\n   En local : copiez .env.example en .env.local. Sur Vercel : Settings → Environment Variables (Production).");
+    process.exit(1);
+  }
+  init(await loadContent());
+  run();
+  await require("./server/db").getDb().end();
+})().catch((e) => {
+  console.error("❌ Build impossible :", e && e.message ? e.message : e);
+  process.exit(1);
+});

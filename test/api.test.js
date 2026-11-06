@@ -36,7 +36,6 @@ async function resetDb() {
   await c.query(`CREATE DATABASE ${TEST_DB}`);
   await c.end();
   execFileSync("node", ["db/migrate.js"], { cwd: ROOT, env: process.env, stdio: "pipe" });
-  execFileSync("node", ["db/import-json.js"], { cwd: ROOT, env: process.env, stdio: "pipe" });
 }
 
 const routes = {

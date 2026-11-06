@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 module.exports = function loadEnv() {
-  const p = path.join(__dirname, "..", "..", ".env.local");
+  const p = path.join(__dirname, "..", ".env.local");
   if (!fs.existsSync(p)) return;
   for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
     const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);

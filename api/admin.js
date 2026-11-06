@@ -22,6 +22,9 @@
  *   GET   contact-messages?status=    PATCH contact-messages/:id { status }
  *   GET   subscribers/stats           GET subscribers   GET subscribers/export (CSV)
  *   GET   stats/views?days=
+ * Médiathèque
+ *   GET media                         images téléversées (les siennes, ou toutes avec media.manage)
+ *   POST media                        octets bruts d'une image JPEG/PNG/WebP ≤ 2 Mo → { url:"/media/<id>" }
  * Comptes
  *   GET users   POST users   PATCH users/:id
  * Toute requête qui modifie exige : session valide + en-tête X-CSRF-Token + Origin du site.
@@ -31,6 +34,7 @@ const { getDb } = require("../server/db");
 const v = require("../server/validate");
 const auth = require("../server/auth");
 const articles = require("../server/articles");
+const media = require("../server/media");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
 
@@ -215,6 +219,15 @@ async function statsRoute(req, res, parts) {
   send(res, 200, { ok: true, days, perDay, topArticles });
 }
 
+/* ── Médiathèque (images téléversées) ── */
+async function mediaRoute(req, res, parts) {
+  if (parts[1]) throw new HttpError(404, "Route inconnue.");
+  const s = await auth.requireAuth(req, "media.upload");
+  if (req.method === "GET") return send(res, 200, { ok: true, items: await media.list(s) });
+  if (req.method === "POST") return send(res, 201, { ok: true, media: await media.upload(s, req) });
+  throw new HttpError(405, "Méthode non autorisée.");
+}
+
 /* ── Comptes ── */
 async function usersRoute(req, res, parts) {
   const s = await auth.requireAuth(req, "user.manage");
@@ -286,6 +299,7 @@ const ROUTES = {
   "contact-messages": contactRoute,
   subscribers: subscribersRoute,
   stats: statsRoute,
+  media: mediaRoute,
   users: usersRoute,
 };
 

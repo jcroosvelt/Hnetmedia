@@ -44,6 +44,7 @@ const routes = {
   "/api/views": require("../api/views"),
   "/api/admin": require("../api/admin"),
   "/api/health": require("../api/health"),
+  "/api/media": require("../api/media"),
 };
 
 test.before(async () => {
@@ -450,4 +451,91 @@ test("contact : « Droit de réponse » accepté (migration 0004) et refus d'un 
   const body = (c) => ({ name: "Marie", email: "marie@example.org", category: c, message: "Je souhaite exercer mon droit de réponse.", hp: "", ts: formTs() });
   assert.equal((await call("POST", "/api/contact", { body: body("Droit de réponse"), headers: ip(130) })).status, 200);
   assert.equal((await call("POST", "/api/contact", { body: body("Type inventé"), headers: ip(130) })).status, 400);
+});
+
+/* ═════════════════════════ IMAGES TÉLÉVERSÉES ═════════════════════════ */
+function fakeImage(kind, w = 1200, h = 800) {
+  if (kind === "png") {
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]), Buffer.from("IHDR"), ihdr, Buffer.alloc(4), Buffer.alloc(12, 1)]);
+  }
+  if (kind === "jpeg") {
+    const sof = Buffer.alloc(17); sof[0] = 0xff; sof[1] = 0xc0; sof.writeUInt16BE(17 - 2 + 0, 2); sof[4] = 8; sof.writeUInt16BE(h, 5); sof.writeUInt16BE(w, 7); sof[9] = 3;
+    return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]), Buffer.from("JFIF\0"), Buffer.from([1, 1, 0, 0, 1, 0, 1, 0, 0]), sof, Buffer.from([0xff, 0xd9])]);
+  }
+  if (kind === "webp") {
+    const b = Buffer.alloc(40); b.write("RIFF", 0); b.writeUInt32LE(32, 4); b.write("WEBPVP8X", 8); b.writeUInt32LE(10, 16); b.writeUIntLE(w - 1, 24, 3); b.writeUIntLE(h - 1, 27, 3);
+    return b;
+  }
+  throw new Error(kind);
+}
+const upload = (s, buf, extra = {}) => call("POST", "/api/admin/media", { raw: buf, cookie: s.cookie, headers: { "content-type": "application/octet-stream", ...(extra.noCsrf ? {} : { "x-csrf-token": s.csrf }) } });
+const getMedia = (id, headers = {}) => fetch(`${base}/api/media?id=${id}`, { headers });
+
+test("images : téléversement validé par le contenu, droits, service public en cache", async () => {
+  const pw = "mot de passe de test 2026";
+  const contrib = await loginAs("contrib@h.com", pw, 140);
+  const com = await loginAs("com@h.com", pw, 141);
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 142);
+
+  assert.equal((await call("POST", "/api/admin/media", { raw: fakeImage("png") })).status, 401, "sans connexion");
+  assert.equal((await upload(com, fakeImage("png"))).status, 403, "le rôle commercial n'a pas le droit de téléverser");
+  assert.equal((await upload(contrib, fakeImage("png"), { noCsrf: true })).status, 403, "jeton CSRF obligatoire");
+
+  const png = fakeImage("png", 1600, 900);
+  let r = await upload(contrib, png);
+  assert.equal(r.status, 201, r.text);
+  const m = r.json.media;
+  assert.match(m.url, /^\/media\/[0-9a-f-]{36}$/);
+  assert.deepEqual([m.width, m.height, m.mime, m.size], [1600, 900, "image/png", png.length], "dimensions lues dans le fichier, pas annoncées par le client");
+  const jpg = (await upload(contrib, fakeImage("jpeg", 800, 600))).json.media;
+  const wbp = (await upload(contrib, fakeImage("webp", 1024, 768))).json.media;
+  assert.deepEqual([jpg.mime, jpg.width, jpg.height, wbp.mime, wbp.width, wbp.height], ["image/jpeg", 800, 600, "image/webp", 1024, 768]);
+
+  // service public : octets identiques, cache immuable, aucun script possible
+  const img = await getMedia(m.id);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get("content-type"), "image/png");
+  assert.match(img.headers.get("cache-control"), /immutable/);
+  assert.equal(img.headers.get("x-content-type-options"), "nosniff");
+  assert.match(img.headers.get("content-security-policy"), /default-src 'none'/);
+  assert.ok(Buffer.from(await img.arrayBuffer()).equals(png), "octets restitués à l'identique");
+  assert.equal((await getMedia(m.id, { "if-none-match": img.headers.get("etag") })).status, 304, "cache conditionnel");
+  assert.equal((await getMedia("00000000-0000-4000-8000-000000000000")).status, 404);
+  assert.equal((await getMedia("../../etc/passwd")).status, 404);
+
+  // faux fichiers : on regarde le contenu, pas le nom ni le type annoncé
+  const pad = (s) => Buffer.concat([Buffer.from(s), Buffer.alloc(64, 32)]);
+  for (const [nom, buf] of [["HTML déguisé", pad("<html><script>alert(1)</script>")], ["SVG", pad('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)">')], ["GIF", pad("GIF89a")], ["PDF", pad("%PDF-1.7")], ["PNG tronqué", fakeImage("png").slice(0, 10)]]) {
+    assert.equal((await upload(contrib, buf)).status, 415, nom + " refusé");
+  }
+  assert.equal((await upload(contrib, Buffer.alloc(0))).status, 400, "fichier vide");
+  assert.equal((await upload(contrib, Buffer.concat([fakeImage("png"), Buffer.alloc(2 * 1024 * 1024)]))).status, 413, "plus de 2 Mo refusé");
+  assert.equal((await upload(contrib, fakeImage("png", 9000, 100))).status, 400, "dimensions démesurées refusées");
+
+  // liste : chacun voit les siennes ; l'administrateur voit tout
+  const mine = (await as(contrib, "GET", "/api/admin/media")).json.items.map((x) => x.id);
+  assert.ok([m.id, jpg.id, wbp.id].every((id) => mine.includes(id)));
+  const other = (await upload(admin, fakeImage("png", 300, 300))).json.media;
+  assert.ok(!(await as(contrib, "GET", "/api/admin/media")).json.items.some((x) => x.id === other.id), "un contributeur ne voit pas les images des autres");
+  assert.ok((await as(admin, "GET", "/api/admin/media")).json.items.some((x) => x.id === m.id), "l'administrateur voit tout");
+
+  // dans un article : images /media acceptées, chemins libres et http refusés, alignement seul toléré
+  const art = (await as(contrib, "POST", "/api/admin/articles", { title: "Reportage photo", category: "culture" })).json.article;
+  const content = `<p style="text-align:center;color:red;position:fixed">Centré</p><figure><img src="${m.url}" alt="Une"><figcaption>Légende</figcaption></figure>`
+    + `<p><img src="/evil.png" alt="x"><img src="http://pas-https.example/a.png" alt="x"><img src="javascript:alert(1)" alt="x"><img src="//autre.example/a.png" alt="x"></p>`;
+  r = await as(contrib, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Reportage photo", content } }, mainImage: { url: m.url, alt: "Vue du port" } });
+  assert.equal(r.status, 200, r.text);
+  const saved = r.json.article.translations.fr.content;
+  assert.ok(saved.includes(`src="${m.url}"`), "image téléversée conservée");
+  assert.ok(/<p style="text-align:center">Centré<\/p>/.test(saved), "alignement conservé, autres styles retirés : " + saved.slice(0, 120));
+  assert.ok(!/evil\.png|pas-https|javascript:|autre\.example/.test(saved), "chemins libres, http, javascript: et //hôte retirés");
+  assert.equal(r.json.article.mainImage.url, m.url, "image principale téléversée acceptée");
+  assert.equal((await as(contrib, "PUT", `/api/admin/articles/${art.id}`, { mainImage: { url: "/media/00000000-0000-4000-8000-000000000000", alt: "x" } })).status, 400, "image principale inconnue refusée");
+  assert.equal((await as(contrib, "PUT", `/api/admin/articles/${art.id}`, { mainImage: { url: "http://x.example/a.png", alt: "x" } })).status, 400, "http refusé");
+  assert.equal((await as(contrib, "PUT", `/api/admin/articles/${art.id}`, { mainImage: { url: "/media/pas-un-uuid", alt: "x" } })).status, 400);
+
+  const stored = await db().query("SELECT length(data)::int n FROM media_files WHERE media_id = $1", [m.id]);
+  assert.equal(stored[0].n, png.length, "octets enregistrés dans la base");
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'media.televersement'")).length >= 3, "téléversements journalisés");
 });

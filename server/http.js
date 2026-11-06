@@ -48,6 +48,31 @@ async function readBody(req) {
   try { return JSON.parse(raw); } catch { throw new HttpError(400, "Corps de requête invalide."); }
 }
 
+/** Corps binaire (image) : octets bruts, taille plafonnée. Fonctionne avec ou sans corps déjà lu par Vercel. */
+async function readRaw(req, maxBytes) {
+  if (req.body !== undefined && req.body !== null && typeof req.body !== "object") {
+    const b = Buffer.from(String(req.body), "latin1");
+    if (b.length > maxBytes) throw new HttpError(413, "Fichier trop volumineux.");
+    return b;
+  }
+  if (Buffer.isBuffer(req.body)) {
+    if (req.body.length > maxBytes) throw new HttpError(413, "Fichier trop volumineux.");
+    return req.body;
+  }
+  const declared = Number(req.headers["content-length"]);
+  if (Number.isFinite(declared) && declared > maxBytes) throw new HttpError(413, "Fichier trop volumineux.");
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > maxBytes) { reject(new HttpError(413, "Fichier trop volumineux.")); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
 function parseCookies(req) {
   const out = {};
   String(req.headers.cookie || "").split(";").forEach((p) => {
@@ -77,4 +102,4 @@ function handler(methods, fn) {
   };
 }
 
-module.exports = { HttpError, send, getQuery, readBody, parseCookies, handler };
+module.exports = { HttpError, send, getQuery, readBody, readRaw, parseCookies, handler };

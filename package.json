@@ -24,6 +24,7 @@
     "@tiptap/extension-character-count": "3.33.0",
     "@tiptap/extension-placeholder": "3.33.0",
     "@tiptap/extension-table": "3.33.0",
+    "@tiptap/extension-text-align": "3.33.0",
     "@tiptap/pm": "3.33.0",
     "@tiptap/starter-kit": "3.33.0",
     "esbuild": "0.28.2",

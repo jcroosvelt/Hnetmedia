@@ -25,6 +25,7 @@
         if (v === null || v === undefined || v === false) return;
         if (k === "class") e.className = v;
         else if (k === "text") e.textContent = v;
+        else if (k === "html") e.innerHTML = v; // uniquement du balisage statique écrit dans ce fichier (icônes)
         else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
         else if (k === "value") after = function () { e.value = v; };
         else if (k === "checked") e.checked = !!v;
@@ -379,67 +380,356 @@
     });
   }
 
-  /* ───────── Articles : éditeur ───────── */
+  /* ───────── Icônes de la page (balisage statique) ───────── */
+  var PAGE_ICONS = {
+    back: '<path d="M15 5l-7 7 7 7"/>',
+    save: '<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>',
+    eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    panel: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M15 5v14"/>',
+    chevron: '<path d="M6 9l6 6 6-6"/>',
+    upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    zoomIn: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>',
+    zoomOut: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.5-4.5M8 11h6"/>'
+  };
+  function pageIcon(name, size) {
+    var n = size || 18;
+    return '<svg viewBox="0 0 24 24" width="' + n + '" height="' + n + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (PAGE_ICONS[name] || "") + "</svg>";
+  }
+
+  /* ───────── Images : réduction sur l'appareil, envoi, sélecteur ───────── */
+  var MAX_ORIGINAL = 30 * 1024 * 1024;
+
+  function canvasBlob(canvas, type, quality) {
+    return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
+  }
+
+  // Réduit la photo (1 600 px au plus) et la ré-encode : fichier léger, et métadonnées (position GPS…) supprimées.
+  function prepareImage(file) {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.reject(new Error("Format non pris en charge. Utilisez une photo JPEG, PNG ou WebP."));
+    if (file.size > MAX_ORIGINAL) return Promise.reject(new Error("Fichier trop volumineux (30 Mo au maximum)."));
+    var decode = window.createImageBitmap ? createImageBitmap(file, { imageOrientation: "from-image" }) : Promise.reject(new Error("x"));
+    return decode.catch(function () { throw new Error("Impossible de lire cette image."); }).then(function (bmp) {
+      function render(maxSide, type, quality, flatten) {
+        var scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+        var w = Math.max(1, Math.round(bmp.width * scale)), hgt = Math.max(1, Math.round(bmp.height * scale));
+        var c = document.createElement("canvas");
+        c.width = w; c.height = hgt;
+        var ctx = c.getContext("2d");
+        if (flatten) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, hgt); }
+        ctx.drawImage(bmp, 0, 0, w, hgt);
+        return canvasBlob(c, type, quality).then(function (blob) { return { blob: blob, width: w, height: hgt }; });
+      }
+      var tries = [[1600, 0.85], [1600, 0.72], [1280, 0.7], [1000, 0.65]];
+      function attempt(i) {
+        return render(tries[i][0], "image/webp", tries[i][1], false).then(function (r) {
+          if (!r.blob || r.blob.type !== "image/webp") return render(tries[i][0], "image/jpeg", Math.min(0.88, tries[i][1] + 0.03), true);
+          return r;
+        }).then(function (r) {
+          if (!r.blob) throw new Error("Impossible de préparer cette image.");
+          if (r.blob.size > 1.9 * 1024 * 1024 && i < tries.length - 1) return attempt(i + 1);
+          if (r.blob.size > 1.9 * 1024 * 1024) throw new Error("Cette image reste trop lourde après réduction. Choisissez-en une plus petite.");
+          return r;
+        });
+      }
+      return attempt(0).then(function (r) { if (bmp.close) bmp.close(); return r; }, function (e) { if (bmp.close) bmp.close(); throw e; });
+    });
+  }
+
+  function uploadImage(blob) {
+    return fetch("/api/admin/media", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream", "X-CSRF-Token": S.csrf || "" },
+      body: blob
+    }).catch(function () { throw ApiError(0, "Connexion impossible. Vérifiez votre réseau et réessayez."); })
+      .then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (data) {
+          if (!res.ok) {
+            if (res.status === 401) sessionLost();
+            throw ApiError(res.status, (data && data.error) || "Échec de l'envoi (" + res.status + ").", data);
+          }
+          return data.media;
+        });
+      });
+  }
+
+  /**
+   * Fenêtre « Insérer une image » : depuis l'appareil (photo réduite automatiquement), depuis la médiathèque,
+   * ou par adresse web. Texte alternatif obligatoire. Retourne { src, alt, caption, credit } ou null.
+   * current : image actuelle { src, alt, caption, credit } ou null ; options.credit : demander un crédit photo.
+   */
+  function pickImage(current, options) {
+    options = options || {};
+    return openDialog(function (box, close) {
+      var chosen = current && current.src ? { kind: "keep", src: current.src } : null;
+      var prepared = null; // { blob, width, height } pour une photo de l'appareil
+      var busy = false;
+      var err = h("div", { class: "hn-alert", hidden: true, role: "alert" });
+      var alt = h("input", { id: "img-alt", type: "text", maxlength: 300, value: current ? current.alt : "", autocomplete: "off" });
+      var cap = h("input", { id: "img-cap", type: "text", maxlength: 300, value: current ? current.caption : "", autocomplete: "off" });
+      var cred = options.credit ? h("input", { id: "img-cred", type: "text", maxlength: 150, value: current ? current.credit : "", autocomplete: "off" }) : null;
+      var fileIn = h("input", { id: "img-file", type: "file", accept: "image/jpeg,image/png,image/webp" });
+      var urlIn = h("input", { id: "img-url", type: "url", placeholder: "https://…", autocomplete: "off", value: current && /^https:/.test(current.src || "") ? current.src : "" });
+      var prevImg = h("img", { alt: "Aperçu de l'image choisie", class: "pk-prev-img" });
+      var prevInfo = h("p", { class: "hn-hint", style: "margin:6px 0 0" });
+      var prev = h("div", { class: "pk-prev", hidden: true }, prevImg, prevInfo);
+      var grid = h("div", { class: "pk-grid", "aria-label": "Images déjà téléversées" });
+      var okBtn = h("button", { type: "submit", class: "hn-btn hn-btn-primary", text: current ? "Enregistrer" : "Insérer" });
+      var cancelBtn = h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Annuler", onclick: function () { if (!busy) close(null); } });
+
+      function showPreview(src, info) { prevImg.src = src; prevInfo.textContent = info || ""; prev.hidden = !src; }
+      if (current && current.src) showPreview(current.src, "Image actuelle — inchangée si vous n'en choisissez pas une autre.");
+
+      var panes = {
+        file: h("div", { class: "pk-pane", "data-p": "file" },
+          h("label", { class: "pk-file", for: "img-file" }, h("span", { html: pageIcon("upload", 22) }), h("span", { text: "Choisir une photo sur cet appareil" }), fileIn),
+          h("p", { class: "hn-hint", text: "La photo est réduite automatiquement (1 600 px au plus) et ses informations cachées, comme la position GPS, sont supprimées." })),
+        lib: h("div", { class: "pk-pane", "data-p": "lib", hidden: true }, grid),
+        url: h("div", { class: "pk-pane", "data-p": "url", hidden: true },
+          h("label", { for: "img-url", text: "Adresse de l'image (https://…)" }), urlIn,
+          h("p", { class: "hn-hint", text: "Image déjà en ligne ailleurs. Vérifiez que vous avez le droit de l'utiliser." }))
+      };
+      var segBtns = {};
+      var seg = h("div", { class: "wd-seg", role: "tablist", "aria-label": "Source de l'image" });
+      [["file", "Mon appareil"], ["lib", "Médiathèque"], ["url", "Adresse web"]].forEach(function (t) {
+        var b = h("button", { type: "button", role: "tab", "data-t": t[0], text: t[1], onclick: function () { setTab(t[0]); } });
+        segBtns[t[0]] = b; seg.appendChild(b);
+      });
+      var libLoaded = false;
+      function setTab(t) {
+        Object.keys(panes).forEach(function (k) { panes[k].hidden = k !== t; segBtns[k].classList.toggle("on", k === t); segBtns[k].setAttribute("aria-selected", String(k === t)); });
+        if (t === "lib" && !libLoaded) {
+          libLoaded = true;
+          grid.appendChild(h("p", { class: "hn-muted", text: "Chargement…" }));
+          api("GET", "media").then(function (r) {
+            clear(grid);
+            if (!r.items.length) { grid.appendChild(h("p", { class: "hn-muted", text: "Aucune image téléversée pour l'instant." })); return; }
+            r.items.forEach(function (m) {
+              var b = h("button", { type: "button", class: "pk-thumb", title: m.width + " × " + m.height + " px", "aria-label": "Image " + m.width + " sur " + m.height + " pixels" }, h("img", { src: m.url, alt: "", loading: "lazy" }));
+              b.addEventListener("click", function () {
+                Array.prototype.forEach.call(grid.children, function (x) { x.classList.remove("on"); });
+                b.classList.add("on"); chosen = { kind: "lib", src: m.url }; prepared = null;
+                showPreview(m.url, m.width + " × " + m.height + " px"); err.hidden = true;
+              });
+              grid.appendChild(b);
+            });
+          }).catch(function (x) { clear(grid); grid.appendChild(h("p", { class: "hn-muted", text: x.message })); });
+        }
+      }
+      fileIn.addEventListener("change", function () {
+        var f = fileIn.files && fileIn.files[0];
+        err.hidden = true;
+        if (!f) return;
+        showPreview("", ""); prev.hidden = false; prevInfo.textContent = "Préparation de la photo…";
+        okBtn.disabled = true;
+        prepareImage(f).then(function (r) {
+          prepared = r; chosen = { kind: "file" };
+          if (prevImg.dataset.url) URL.revokeObjectURL(prevImg.dataset.url);
+          var u = URL.createObjectURL(r.blob); prevImg.dataset.url = u; prevImg.src = u;
+          prevInfo.textContent = r.width + " × " + r.height + " px · " + Math.max(1, Math.round(r.blob.size / 1024)) + " Ko après réduction";
+        }).catch(function (e) {
+          prepared = null; chosen = current && current.src ? { kind: "keep", src: current.src } : null; fileIn.value = "";
+          prev.hidden = !(current && current.src); if (current && current.src) showPreview(current.src, "Image actuelle.");
+          err.textContent = e.message; err.hidden = false;
+        }).then(function () { okBtn.disabled = false; });
+      });
+
+      var form = h("form", { class: "hn-form", novalidate: true },
+        h("h2", { text: options.title || (current ? "Modifier l'image" : "Insérer une image") }),
+        seg, panes.file, panes.lib, panes.url, prev,
+        h("label", { for: "img-alt", text: "Texte alternatif (obligatoire : décrit l'image aux lecteurs d'écran)" }), alt,
+        h("label", { for: "img-cap", text: options.credit ? "Légende" : "Légende et crédit (ex. « Le port de Jacmel. Photo : Nom Prénom »)" }), cap,
+        cred ? h("label", { for: "img-cred", text: "Crédit photo" }) : null, cred,
+        err,
+        h("div", { class: "hn-actions" }, cancelBtn, okBtn));
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (busy) return;
+        err.hidden = true;
+        function fail(m) { err.textContent = m; err.hidden = false; }
+        if (!String(alt.value).trim()) { fail("Le texte alternatif est obligatoire."); alt.focus(); return; }
+        // Source selon l'onglet actif
+        var activeTab = Object.keys(panes).filter(function (k) { return !panes[k].hidden; })[0];
+        var src = null, pending = null;
+        if (activeTab === "url" && urlIn.value.trim()) {
+          try { var u = new URL(urlIn.value.trim()); if (u.protocol !== "https:") throw new Error(); src = u.toString(); }
+          catch (x) { fail("L'adresse de l'image doit commencer par https://"); urlIn.focus(); return; }
+        } else if (chosen && chosen.kind === "file" && prepared) pending = prepared;
+        else if (chosen && (chosen.kind === "lib" || chosen.kind === "keep")) src = chosen.src;
+        else if (urlIn.value.trim()) {
+          try { var u2 = new URL(urlIn.value.trim()); if (u2.protocol !== "https:") throw new Error(); src = u2.toString(); }
+          catch (x2) { fail("L'adresse de l'image doit commencer par https://"); return; }
+        }
+        if (!src && !pending) { fail("Choisissez une image : une photo de l'appareil, une image de la médiathèque ou une adresse web."); return; }
+        function done(finalSrc) {
+          close({ src: finalSrc, alt: String(alt.value).trim(), caption: String(cap.value).trim(), credit: cred ? String(cred.value).trim() : "" });
+        }
+        if (src) return done(src);
+        busy = true; okBtn.disabled = true; okBtn.textContent = "Envoi en cours…"; cancelBtn.disabled = true;
+        uploadImage(pending.blob).then(function (m) { done(m.url); }).catch(function (x) {
+          busy = false; okBtn.disabled = false; okBtn.textContent = current ? "Enregistrer" : "Insérer"; cancelBtn.disabled = false; fail(x.message);
+        });
+      });
+      box.appendChild(form);
+      setTab(current && current.src && /^https:/.test(current.src) ? "url" : "file");
+    }, true);
+  }
+
+  /* ───────── Articles : éditeur (présentation façon traitement de texte) ───────── */
   function renderArticle(view, id) {
     return Promise.all([ensureMeta(), api("GET", "articles/" + encodeURIComponent(id)), loadEditor()]).then(function (res) {
       var meta = res[0];
       var a = res[1].article;
       var rights = a.rights;
       var editable = rights.edit;
-      var cur = a.originalLang || "fr";
-      var dirty = false, imgDirty = false;
+      var origLang = a.originalLang || "fr";
+      var cur = origLang;
+      var dirty = false, imgDirty = false, saving = false;
+      var savedAt = a.updatedAt ? new Date(a.updatedAt) : null;
       var tr = {};
       LANGS.forEach(function (l) {
         var t = a.translations[l[0]] || {};
         tr[l[0]] = { title: t.title || "", kicker: t.kicker || "", excerpt: t.excerpt || "", content: t.content || "", seoTitle: t.seo_title || "", seoDescription: t.seo_description || "", reviewed: !!t.reviewed };
       });
       var sources = (a.sources || []).map(function (s) { return { name: s.name, url: s.url || "", description: s.description || "" }; });
+      var mainImg = a.mainImage ? { url: a.mainImage.url, alt: a.mainImage.alt || "", caption: a.mainImage.caption || "", credit: a.mainImage.credit || "" } : { url: "", alt: "", caption: "", credit: "" };
       var draftKey = "hnet-brouillon-" + a.id;
+      var ed = null, langReady = false, zoom = 100;
+      var paneOn = window.matchMedia("(min-width: 901px)").matches;
 
-      function markDirty() { dirty = true; saveBtn && (saveBtn.disabled = !editable); }
-
-      /* champs */
+      function markDirty() { if (!editable) return; dirty = true; refreshChrome(); }
+      function autosize(t) { t.style.height = "auto"; t.style.height = (t.scrollHeight + 2) + "px"; }
       var inp = function (props) { return h("input", Object.assign({ type: "text", disabled: !editable, oninput: markDirty }, props)); };
       var f = {
-        title: inp({ id: "a-title", maxlength: 300, "aria-label": "Titre", style: "font-family:'Playfair Display',serif;font-size:20px;font-weight:700" }),
-        kicker: inp({ id: "a-kicker", maxlength: 120 }),
-        excerpt: h("textarea", { id: "a-excerpt", maxlength: 600, rows: 3, disabled: !editable, oninput: markDirty }),
+        kicker: h("input", { id: "a-kicker", type: "text", class: "wd-kicker", maxlength: 120, placeholder: "SURTITRE (facultatif)", "aria-label": "Surtitre", disabled: !editable, oninput: markDirty }),
+        title: h("textarea", { id: "a-title", class: "wd-titlein", rows: 1, maxlength: 300, placeholder: "Titre de l'article", "aria-label": "Titre", disabled: !editable, oninput: function () { autosize(f.title); refreshChrome(); markDirty(); } }),
+        excerpt: h("textarea", { id: "a-excerpt", class: "wd-excerpt", rows: 2, maxlength: 600, placeholder: "Chapeau : résumé en deux ou trois phrases…", "aria-label": "Chapeau", disabled: !editable, oninput: function () { autosize(f.excerpt); markDirty(); } }),
+        reviewed: h("input", { type: "checkbox", id: "a-rev", disabled: !can("translation.edit"), onchange: markDirty }),
         seoTitle: inp({ id: "a-seot", maxlength: 120 }),
         seoDesc: h("textarea", { id: "a-seod", maxlength: 300, rows: 2, disabled: !editable, oninput: markDirty }),
-        reviewed: h("input", { type: "checkbox", id: "a-rev", disabled: !can("translation.edit"), onchange: markDirty }),
         slug: inp({ id: "a-slug", maxlength: 120 }),
         category: h("select", { id: "a-cat", disabled: !editable, onchange: markDirty }, h("option", { value: "", text: "— Choisir —" }), meta.categories.map(function (c) { return h("option", { value: c.slug, text: c.label }); })),
         type: h("select", { id: "a-type", disabled: !editable, onchange: markDirty }, TYPES.map(function (t) { return h("option", { value: t[0], text: t[1] }); })),
         author: h("select", { id: "a-author", disabled: !editable, onchange: markDirty }, h("option", { value: "", text: "— Aucune fiche auteur —" }), meta.authors.map(function (x) { return h("option", { value: x.id, text: x.name }); })),
         signature: inp({ id: "a-sign", maxlength: 150 }),
         tags: inp({ id: "a-tags", placeholder: "élections, CEP, Port-au-Prince" }),
-        imgUrl: inp({ id: "a-iurl", type: "url", placeholder: "https://…", oninput: function () { markDirty(); imgDirty = true; } }),
-        imgAlt: inp({ id: "a-ialt", maxlength: 300, oninput: function () { markDirty(); imgDirty = true; } }),
-        imgCap: inp({ id: "a-icap", maxlength: 300, oninput: function () { markDirty(); imgDirty = true; } }),
-        imgCred: inp({ id: "a-icred", maxlength: 150, oninput: function () { markDirty(); imgDirty = true; } }),
+        imgAlt: inp({ id: "a-ialt", maxlength: 300, oninput: function () { mainImg.alt = f.imgAlt.value; imgDirty = true; markDirty(); } }),
+        imgCap: inp({ id: "a-icap", maxlength: 300, oninput: function () { mainImg.caption = f.imgCap.value; imgDirty = true; markDirty(); } }),
+        imgCred: inp({ id: "a-icred", maxlength: 150, oninput: function () { mainImg.credit = f.imgCred.value; imgDirty = true; markDirty(); } }),
         featured: h("input", { type: "checkbox", id: "a-feat", disabled: !rights.publish, onchange: markDirty }),
         urgent: h("input", { type: "checkbox", id: "a-urg", disabled: !rights.publish, onchange: markDirty }),
-        recommended: h("input", { type: "checkbox", id: "a-rec", disabled: !rights.publish, onchange: markDirty }),
+        recommended: h("input", { type: "checkbox", id: "a-rec", disabled: !rights.publish, onchange: markDirty })
       };
       f.slug.value = a.slug; f.category.value = a.category || ""; f.type.value = a.type;
       f.author.value = a.authorId || ""; f.signature.value = a.authorName || "";
       f.tags.value = (a.tags || []).map(function (t) { return t.label; }).join(", ");
-      if (a.mainImage) { f.imgUrl.value = a.mainImage.url; f.imgAlt.value = a.mainImage.alt || ""; f.imgCap.value = a.mainImage.caption || ""; f.imgCred.value = a.mainImage.credit || ""; }
+      f.imgAlt.value = mainImg.alt; f.imgCap.value = mainImg.caption; f.imgCred.value = mainImg.credit;
       f.featured.checked = a.featured; f.urgent.checked = a.urgent; f.recommended.checked = a.recommended;
 
-      var langTabs = h("div", { class: "hn-tabsl", role: "tablist", "aria-label": "Langue du texte" });
-      var langHint = h("p", { class: "hn-hint" });
-      var revWrap = h("div", { class: "hn-checks" }, h("label", { for: "a-rev" }, f.reviewed, "Traduction relue et validée par un humain"));
-      var edRoot = h("div", { id: "a-editor" });
-      var ed = null;
+      var label = function (text, forId) { return h("label", { for: forId, text: text }); };
+      var fmtTime = function (d) { return d ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""; };
 
+      /* ── éléments de la page ── */
+      var wd = h("div", { class: "wd" + (paneOn ? " wd-pane-on" : "") });
+      var docName = h("span", { class: "wd-docname", id: "wd-docname" });
+      var statusBadge = h("span", { class: "wd-status-badge" });
+      var langSeg = h("div", { class: "wd-langs", role: "group", "aria-label": "Langue du texte" });
+      var saveBtn = h("button", { type: "button", class: "wd-tbtn wd-save", "aria-label": "Enregistrer (Ctrl+S)", title: "Enregistrer (Ctrl+S)", onclick: function () { save(false); } },
+        h("span", { html: pageIcon("save") }), h("span", { class: "wd-tlbl", text: "Enregistrer" }));
+      var previewBtn = h("button", { type: "button", class: "wd-tbtn wd-preview", "aria-label": "Aperçu de l'article", title: "Aperçu", onclick: preview },
+        h("span", { html: pageIcon("eye") }), h("span", { class: "wd-tlbl", text: "Aperçu" }));
+      var publishBtn = h("button", { type: "button", class: "wd-tbtn wd-publish primary", "aria-haspopup": "menu", "aria-expanded": "false" });
+      var publishMenu = h("div", { class: "wd-menu", role: "menu", hidden: true });
+      var publishWrap = h("div", { class: "wd-pubwrap" }, publishBtn, publishMenu);
+      var paneBtn = h("button", { type: "button", class: "wd-tbtn wd-panebtn", "aria-label": "Volet Propriétés", title: "Propriétés de l'article", onclick: togglePane },
+        h("span", { html: pageIcon("panel") }), h("span", { class: "wd-tlbl", text: "Propriétés" }));
+      var titleBar = h("header", { class: "wd-title" },
+        h("a", { class: "wd-back", href: "#/articles", "aria-label": "Retour à la liste des articles", title: "Retour aux articles", html: pageIcon("back", 20) }),
+        h("div", { class: "wd-doc" }, docName, statusBadge),
+        langSeg,
+        h("div", { class: "wd-actions" }, saveBtn, previewBtn, publishWrap, paneBtn));
+
+      var ribbonEl = h("div", { class: "wd-ribbon" });
+      var statsEl = h("span", { class: "wd-stats", "aria-live": "polite" });
+      var saveState = h("span", { class: "wd-savestate", "aria-live": "polite" });
+      var zoomLbl = h("span", { class: "wd-zoomval", text: "100 %" });
+      var zoomOutB = h("button", { type: "button", class: "wd-zbtn", "aria-label": "Zoom arrière", html: pageIcon("zoomOut", 16), onclick: function () { setZoom(zoom - 10); } });
+      var zoomInB = h("button", { type: "button", class: "wd-zbtn", "aria-label": "Zoom avant", html: pageIcon("zoomIn", 16), onclick: function () { setZoom(zoom + 10); } });
+      var statusBar = h("footer", { class: "wd-statusbar" }, statsEl, saveState, h("span", { class: "wd-zoom" }, zoomOutB, zoomLbl, zoomInB));
+
+      /* feuille (page) */
+      var langHint = h("p", { class: "wd-langhint" });
+      var revWrap = h("div", { class: "hn-checks wd-rev" }, h("label", { for: "a-rev" }, f.reviewed, "Traduction relue et validée par un humain"));
+      var contentEl = h("div", { class: "hn-ed-content article-body", id: "a-editor" });
+      var sheet = h("article", { class: "wd-sheet" }, h("div", { class: "wd-langbanner" }, langHint, revWrap), f.kicker, f.title, f.excerpt, h("hr", { class: "wd-rule" }), contentEl);
+      var canvas = h("div", { class: "wd-canvas" }, sheet);
+
+      /* volet Propriétés */
+      var statusBox = h("div");
+      var corrBox = h("div");
+      var srcBox = h("div", { class: "hn-rows" });
+      var imgBox = h("div");
+      function section(title, open, id, body) {
+        return h("details", { class: "wd-sec", "data-sec": id, open: open }, h("summary", { text: title }), h("div", { class: "wd-sec-body hn-form" }, body));
+      }
+      var sponsorBox = null;
+      if (rights.sponsor) {
+        var sp = h("input", { type: "checkbox", id: "a-sp", checked: a.sponsored, onchange: function () {
+          api("POST", "articles/" + encodeURIComponent(a.id) + "/sponsored", { sponsored: sp.checked }).then(function (r) { a = r.article; refreshChrome(); toast(a.sponsored ? "Mention « Sponsorisé » activée." : "Mention « Sponsorisé » retirée."); })
+            .catch(function (x) { sp.checked = !sp.checked; toast(x.message, true); });
+        } });
+        sponsorBox = h("div", { class: "hn-checks" }, h("label", { for: "a-sp" }, sp, "Contenu sponsorisé (affiche la mention)"));
+      }
+      var rebuildNote = h("div", { class: meta.siteRebuild ? "update-note" : "correction-note", style: "margin-top:12px", text: meta.siteRebuild
+        ? "Publier, dépublier, archiver ou corriger met le site à jour automatiquement (1 à 2 minutes)."
+        : "La mise à jour automatique du site n'est pas encore configurée : après une publication, le site ne changera qu'au prochain déploiement." });
+      var paneClose = h("button", { type: "button", class: "wd-paneclose", "aria-label": "Fermer le volet Propriétés", html: pageIcon("close", 20), onclick: togglePane });
+      var pane = h("aside", { class: "wd-pane", "aria-label": "Propriétés de l'article" },
+        h("div", { class: "wd-panehead" }, h("strong", { text: "Propriétés de l'article" }), paneClose),
+        section("Publication", true, "pub", [statusBox, sponsorBox, rebuildNote]),
+        section("Classement", true, "cls", [
+          label("Rubrique", "a-cat"), f.category, label("Type de contenu", "a-type"), f.type,
+          label("Auteur", "a-author"), f.author, label("Ou signature libre", "a-sign"), f.signature,
+          label("Adresse (slug)", "a-slug"), f.slug, label("Mots-clés (séparés par des virgules)", "a-tags"), f.tags,
+          rights.publish ? h("div", { class: "hn-checks" }, h("label", { for: "a-feat" }, f.featured, "À la une"), h("label", { for: "a-urg" }, f.urgent, "Urgent"), h("label", { for: "a-rec" }, f.recommended, "Recommandé")) : null]),
+        section("Image principale", false, "img", imgBox),
+        section("Sources", false, "src", [h("p", { class: "hn-hint", style: "margin:0 0 10px", text: "Indiquez vos sources : elles apparaissent sous l'article." }), srcBox]),
+        section("Référencement", false, "seo", [label("Titre pour les moteurs de recherche (60 caractères conseillés)", "a-seot"), f.seoTitle, label("Description pour les moteurs de recherche (150 caractères conseillés)", "a-seod"), f.seoDesc]),
+        section("Corrections publiques", false, "cor", corrBox),
+        rights.delete ? section("Zone dangereuse", false, "del", h("button", { type: "button", class: "hn-btn hn-btn-danger", text: "Supprimer définitivement", onclick: deleteArticle })) : null);
+
+      /* ── ruban : onglet « Affichage » propre à la page ── */
+      var viewTab = { id: "affichage", label: "Affichage", groups: [
+        { label: "Zoom", items: [
+          { id: "zoom-out", icon: "zoomOut", big: true, label: "Réduire", title: "Zoom arrière", run: function () { setZoom(zoom - 10); } },
+          { id: "zoom-in", icon: "zoomIn", big: true, label: "Agrandir", title: "Zoom avant", run: function () { setZoom(zoom + 10); } },
+          { id: "zoom-100", icon: "zoomIn", big: true, label: "100 %", title: "Zoom 100 %", run: function () { setZoom(100); } }
+        ] },
+        { label: "Afficher", items: [
+          { id: "view-pane", icon: "panel", big: true, label: "Propriétés", title: "Volet Propriétés", run: togglePane, isActive: function () { return paneOn; } },
+          { id: "view-preview", icon: "eye", big: true, label: "Aperçu", title: "Aperçu de l'article", run: preview }
+        ] }
+      ] };
+
+      /* ── fonctions ── */
+      function setZoom(z) {
+        zoom = Math.max(70, Math.min(160, Math.round(z / 10) * 10));
+        sheet.style.zoom = String(zoom / 100);
+        zoomLbl.textContent = zoom + " %";
+        autosize(f.title); autosize(f.excerpt);
+      }
+      function togglePane() {
+        paneOn = !paneOn;
+        wd.classList.toggle("wd-pane-on", paneOn);
+        paneBtn.classList.toggle("is-active", paneOn);
+        if (ed) ed.refresh();
+      }
       function saveCur() {
         var t = tr[cur];
         t.title = f.title.value; t.kicker = f.kicker.value; t.excerpt = f.excerpt.value;
         t.seoTitle = f.seoTitle.value; t.seoDescription = f.seoDesc.value; t.reviewed = f.reviewed.checked;
         t.content = ed ? ed.getHTML() : t.content;
       }
-      var langReady = false;
       function showLang(l) {
         if (langReady) saveCur(); // jamais à l'ouverture : le formulaire est encore vide
         langReady = true;
@@ -448,15 +738,37 @@
         f.title.value = t.title; f.kicker.value = t.kicker; f.excerpt.value = t.excerpt;
         f.seoTitle.value = t.seoTitle; f.seoDesc.value = t.seoDescription; f.reviewed.checked = t.reviewed;
         if (ed) ed.setHTML(t.content);
-        var orig = l === (a.originalLang || "fr");
-        revWrap.hidden = orig;
-        langHint.textContent = orig ? "Version d'origine de l'article." :
-          (t.title ? "Traduction : elle n'est publiée sur le site qu'une fois relue et validée. Aucune traduction automatique." : "Pas encore de traduction : saisissez un titre et un texte pour la créer. Elle ne sera publiée qu'une fois relue et validée.");
-        Array.prototype.forEach.call(langTabs.children, function (b) { b.classList.toggle("on", b.getAttribute("data-l") === l); b.setAttribute("aria-selected", String(b.getAttribute("data-l") === l)); });
+        var orig = l === origLang;
+        langHint.textContent = orig ? "" : (t.title ? "Traduction : elle n'est publiée sur le site qu'une fois relue et validée. Aucune traduction automatique." : "Pas encore de traduction : saisissez un titre et un texte pour la créer. Elle ne sera publiée qu'une fois relue et validée.");
+        sheet.classList.toggle("wd-translating", !orig);
+        Array.prototype.forEach.call(langSeg.children, function (b) { var on = b.getAttribute("data-l") === l; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+        autosize(f.title); autosize(f.excerpt); refreshChrome();
       }
       LANGS.forEach(function (l) {
-        langTabs.appendChild(h("button", { type: "button", role: "tab", "data-l": l[0], text: l[1], onclick: function () { showLang(l[0]); } }));
+        langSeg.appendChild(h("button", { type: "button", "data-l": l[0], text: l[0].toUpperCase(), title: l[1], "aria-label": l[1], "aria-pressed": "false", onclick: function () { showLang(l[0]); } }));
       });
+
+      function refreshChrome() {
+        var name = (f.title.value || "").trim();
+        docName.textContent = name || "Article sans titre";
+        clear(statusBadge); statusBadge.appendChild(badge(a.status, a.sponsored));
+        saveBtn.disabled = !editable || !dirty || saving;
+        saveState.textContent = saving ? "Enregistrement…" : (!editable ? "Lecture seule" : dirty ? "● Modifications non enregistrées" : (savedAt ? "Enregistré à " + fmtTime(savedAt) : "À jour"));
+        saveState.className = "wd-savestate" + (dirty ? " dirty" : "");
+        publishBtn.innerHTML = "";
+        publishBtn.appendChild(h("span", { class: "wd-tlbl2", text: a.status === "publie" ? "Publié" : a.status === "programme" ? "Programmé" : "Publier" }));
+        publishBtn.appendChild(h("span", { html: pageIcon("chevron", 16) }));
+        Array.prototype.forEach.call(langSeg.children, function (b) {
+          var l = b.getAttribute("data-l"); var has = l === cur ? !!f.title.value.trim() : !!(tr[l] && tr[l].title.trim());
+          b.classList.toggle("has", has);
+        });
+        // statut + date dans la section Publication
+        clear(statusBox);
+        statusBox.appendChild(h("div", { style: "margin-bottom:8px" }, badge(a.status, a.sponsored)));
+        statusBox.appendChild(h("p", { class: "hn-muted", text: a.publishedAt ? (a.status === "programme" ? "Publication prévue le " : "Publié le ") + fmt(a.publishedAt) : "Pas encore de date de publication." }));
+        statusBox.appendChild(h("p", { class: "hn-muted", text: "Dernière modification : " + fmt(a.updatedAt) }));
+        renderPublishMenu();
+      }
 
       function collect() {
         saveCur();
@@ -470,36 +782,30 @@
           authorId: f.author.value || null, authorName: f.signature.value.trim() || null,
           tags: f.tags.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
           sources: sources.filter(function (s) { return s.name.trim(); }).map(function (s) { return { name: s.name.trim(), url: s.url.trim() || undefined, description: s.description || undefined }; }),
-          translations: translations,
+          translations: translations
         };
         if (rights.publish) { body.featured = f.featured.checked; body.urgent = f.urgent.checked; body.recommended = f.recommended.checked; }
-        if (imgDirty) body.mainImage = f.imgUrl.value.trim() ? { url: f.imgUrl.value.trim(), alt: f.imgAlt.value.trim(), caption: f.imgCap.value.trim(), credit: f.imgCred.value.trim() } : null;
+        if (imgDirty) body.mainImage = mainImg.url ? { url: mainImg.url, alt: mainImg.alt.trim(), caption: mainImg.caption.trim(), credit: mainImg.credit.trim() } : null;
         return body;
       }
 
-      function refreshHead() {
-        clear(statusBox);
-        statusBox.appendChild(h("div", { style: "margin-bottom:8px" }, badge(a.status, a.sponsored)));
-        statusBox.appendChild(h("p", { class: "hn-muted", text: a.publishedAt ? (a.status === "programme" ? "Publication prévue le " : "Publié le ") + fmt(a.publishedAt) : "Pas encore de date de publication." }));
-        statusBox.appendChild(h("p", { class: "hn-muted", text: "Dernière modification : " + fmt(a.updatedAt) }));
-      }
-
       function save(quiet) {
-        if (!editable) return Promise.resolve(false);
+        if (!editable || saving) return Promise.resolve(false);
+        saving = true; refreshChrome();
         return api("PUT", "articles/" + encodeURIComponent(a.id), collect()).then(function (r) {
-          a = r.article; rights = a.rights; dirty = false; imgDirty = false; saveBtn.disabled = true;
+          a = r.article; rights = a.rights; dirty = false; imgDirty = false; saving = false; savedAt = new Date();
           try { localStorage.removeItem(draftKey); } catch (e) { /* ignoré */ }
-          f.slug.value = a.slug; refreshHead();
+          f.slug.value = a.slug; refreshChrome();
           if (!quiet) toast("Article enregistré.");
           return true;
-        }).catch(function (x) { toast(x.message, true); return false; });
+        }).catch(function (x) { saving = false; refreshChrome(); toast(x.message, true); return false; });
       }
 
       function changeStatus(status, extra, okMsg) {
         return (dirty ? save(true) : Promise.resolve(true)).then(function (ok) {
           if (!ok) return;
           return api("POST", "articles/" + encodeURIComponent(a.id) + "/status", Object.assign({ status: status }, extra || {})).then(function (r) {
-            a = r.article; rights = a.rights; refreshHead(); renderActions(); renderCorrections();
+            a = r.article; rights = a.rights; refreshChrome(); renderCorrections();
             var msg = okMsg;
             if (status === "publie" || status === "programme") msg += r.article.rebuildTriggered ? " Mise à jour du site demandée." : " (Mise à jour automatique du site non configurée.)";
             toast(msg);
@@ -507,32 +813,41 @@
         });
       }
 
-      var statusBox = h("div");
-      var corrBox = h("div");
-      var actionsBox = h("div", { class: "hn-actions", style: "margin-top:12px" });
-      var saveBtn = h("button", { type: "button", class: "hn-btn hn-btn-primary", text: "Enregistrer", disabled: true, onclick: function () { save(false); } });
-      function renderActions() {
-        clear(actionsBox);
-        if (editable) actionsBox.appendChild(saveBtn);
-        if (rights.publish && a.status !== "publie") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-navy", text: "Publier maintenant", onclick: function () {
-          confirmBox("Cet article sera publié immédiatement, sous la signature indiquée.", { title: "Publier l'article ?", confirm: "Publier" }).then(function (ok) { if (ok) changeStatus("publie", null, "Article publié."); });
-        } }));
-        if (rights.publish && a.status !== "publie") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Programmer…", onclick: function () {
-          var soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
-          var local = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-          ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer", intro: "L'article apparaîtra sur le site au premier déploiement qui suit cette date. Une mise à jour automatique à heure fixe n'est pas encore en place." }).then(function (v) {
-            if (v) changeStatus("programme", { publishedAt: new Date(v.when).toISOString() }, "Publication programmée.");
-          });
-        } }));
-        if (rights.publish && a.status === "publie") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Dépublier (brouillon)", onclick: function () {
+      /* menu « Publier » */
+      function closeMenu() { publishMenu.hidden = true; publishBtn.setAttribute("aria-expanded", "false"); }
+      function renderPublishMenu() {
+        clear(publishMenu);
+        var entries = [];
+        if (rights.publish && a.status !== "publie") {
+          entries.push(["Publier maintenant", function () {
+            confirmBox("Cet article sera publié immédiatement, sous la signature indiquée.", { title: "Publier l'article ?", confirm: "Publier" }).then(function (ok) { if (ok) changeStatus("publie", null, "Article publié."); });
+          }]);
+          entries.push(["Programmer…", function () {
+            var soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
+            var local = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer", intro: "L'article apparaîtra sur le site au premier déploiement qui suit cette date. Une mise à jour automatique à heure fixe n'est pas encore en place." }).then(function (v) {
+              if (v) changeStatus("programme", { publishedAt: new Date(v.when).toISOString() }, "Publication programmée.");
+            });
+          }]);
+        }
+        if (rights.publish && a.status === "publie") entries.push(["Dépublier (brouillon)", function () {
           confirmBox("L'article ne sera plus visible sur le site après la prochaine mise à jour.", { title: "Dépublier ?", confirm: "Dépublier" }).then(function (ok) { if (ok) changeStatus("brouillon", null, "Article repassé en brouillon."); });
-        } }));
-        if (rights.publish && a.status === "programme") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Annuler la programmation", onclick: function () { changeStatus("brouillon", null, "Programmation annulée."); } }));
-        if (rights.archive && a.status !== "archive") actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Archiver", onclick: function () {
+        }]);
+        if (rights.publish && a.status === "programme") entries.push(["Annuler la programmation", function () { changeStatus("brouillon", null, "Programmation annulée."); }]);
+        if (rights.archive && a.status !== "archive") entries.push(["Archiver", function () {
           confirmBox("L'article sera retiré du site mais conservé.", { title: "Archiver ?", confirm: "Archiver" }).then(function (ok) { if (ok) changeStatus("archive", null, "Article archivé."); });
-        } }));
-        actionsBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Aperçu", onclick: preview }));
+        }]);
+        publishWrap.hidden = !entries.length;
+        entries.forEach(function (en) {
+          publishMenu.appendChild(h("button", { type: "button", role: "menuitem", class: "wd-menuitem", text: en[0], onclick: function () { closeMenu(); en[1](); } }));
+        });
       }
+      publishBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var open = publishMenu.hidden;
+        publishMenu.hidden = !open; publishBtn.setAttribute("aria-expanded", String(open));
+      });
+      function onDocClick(e) { if (!publishWrap.contains(e.target)) closeMenu(); }
 
       function preview() {
         saveCur();
@@ -549,8 +864,31 @@
         }, true);
       }
 
+      /* image principale */
+      function renderMainImage() {
+        clear(imgBox);
+        if (mainImg.url) {
+          imgBox.appendChild(h("img", { class: "wd-mainimg", src: mainImg.url, alt: mainImg.alt || "Image principale" }));
+          imgBox.appendChild(label("Texte alternatif (obligatoire)", "a-ialt")); imgBox.appendChild(f.imgAlt);
+          imgBox.appendChild(label("Légende", "a-icap")); imgBox.appendChild(f.imgCap);
+          imgBox.appendChild(label("Crédit photo", "a-icred")); imgBox.appendChild(f.imgCred);
+        } else imgBox.appendChild(h("p", { class: "hn-muted", text: "Aucune image principale." }));
+        if (editable) {
+          imgBox.appendChild(h("div", { class: "hn-actions", style: "margin-top:12px" },
+            h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm wd-pickmain", text: mainImg.url ? "Changer l'image…" : "Choisir une image…", onclick: function () {
+              pickImage(mainImg.url ? { src: mainImg.url, alt: mainImg.alt, caption: mainImg.caption, credit: mainImg.credit } : null, { credit: true, title: "Image principale" }).then(function (v) {
+                if (!v) return;
+                mainImg = { url: v.src, alt: v.alt, caption: v.caption, credit: v.credit };
+                f.imgAlt.value = mainImg.alt; f.imgCap.value = mainImg.caption; f.imgCred.value = mainImg.credit;
+                imgDirty = true; markDirty(); renderMainImage();
+                var sec = pane.querySelector('[data-sec="img"]'); if (sec) sec.open = true;
+              });
+            } }),
+            mainImg.url ? h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Retirer", onclick: function () { mainImg = { url: "", alt: "", caption: "", credit: "" }; f.imgAlt.value = ""; f.imgCap.value = ""; f.imgCred.value = ""; imgDirty = true; markDirty(); renderMainImage(); } }) : null));
+        }
+      }
+
       /* sources */
-      var srcBox = h("div", { class: "hn-rows" });
       function renderSources() {
         clear(srcBox);
         sources.forEach(function (s, i) {
@@ -562,84 +900,55 @@
         if (editable) srcBox.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "+ Ajouter une source", onclick: function () { sources.push({ name: "", url: "", description: "" }); renderSources(); } }));
       }
 
-      /* assemblage de la page */
-      var label = function (text, forId) { return h("label", { for: forId, text: text }); };
-      var left = h("div", null,
-        h("div", { class: "hn-card hn-form" },
-          h("div", { class: "hn-tabsl-wrap" }, langTabs), langHint,
-          label("Titre", "a-title"), f.title,
-          h("div", { class: "hn-grid2" }, h("div", null, label("Surtitre (facultatif)", "a-kicker"), f.kicker)),
-          label("Chapeau (résumé de 2 à 3 phrases)", "a-excerpt"), f.excerpt,
-          revWrap,
-          label("Texte de l'article", "a-editor"), edRoot,
-          h("details", { style: "margin-top:16px" }, h("summary", { style: "cursor:pointer;font-size:13px;font-weight:700;color:var(--navy)", text: "Référencement (facultatif)" }),
-            label("Titre pour les moteurs de recherche (60 caractères conseillés)", "a-seot"), f.seoTitle,
-            label("Description pour les moteurs de recherche (150 caractères conseillés)", "a-seod"), f.seoDesc)),
-        h("div", { class: "hn-card hn-form" }, h("h2", { text: "Sources" }), h("p", { class: "hn-hint", style: "margin:0 0 10px", text: "Indiquez vos sources : elles apparaissent sous l'article." }), srcBox),
-        corrBox);
-
-      function renderCorrections() { clear(corrBox); corrBox.appendChild(correctionsCard()); }
-      function correctionsCard() {
-        var card = h("div", { class: "hn-card hn-form" }, h("h2", { text: "Corrections publiques" }));
-        if (a.corrections.length) a.corrections.forEach(function (c) { card.appendChild(h("div", { class: "correction-note" }, h("strong", { text: fmt(c.corrected_at) + " — " }), c.text)); });
-        else card.appendChild(h("p", { class: "hn-muted", text: "Aucune correction publiée." }));
+      /* corrections */
+      function renderCorrections() {
+        clear(corrBox);
+        if (a.corrections.length) a.corrections.forEach(function (c) { corrBox.appendChild(h("div", { class: "correction-note" }, h("strong", { text: fmt(c.corrected_at) + " — " }), c.text)); });
+        else corrBox.appendChild(h("p", { class: "hn-muted", text: "Aucune correction publiée." }));
         if (rights.correct && a.status === "publie") {
           var ta = h("textarea", { rows: 3, maxlength: 1000, "aria-label": "Texte de la correction", placeholder: "Ex. : La date du scrutin a été corrigée (30 au lieu de 13)." });
-          card.appendChild(ta);
-          card.appendChild(h("div", { class: "hn-actions", style: "margin-top:10px" }, h("button", { type: "button", class: "hn-btn hn-btn-navy", text: "Publier la correction", onclick: function () {
+          corrBox.appendChild(ta);
+          corrBox.appendChild(h("div", { class: "hn-actions", style: "margin-top:10px" }, h("button", { type: "button", class: "hn-btn hn-btn-navy", text: "Publier la correction", onclick: function () {
             if (!ta.value.trim()) return toast("Saisissez le texte de la correction.", true);
             api("POST", "articles/" + encodeURIComponent(a.id) + "/corrections", { text: ta.value }).then(function (r) {
               a = r.article; toast("Correction publiée."); renderCorrections();
             }).catch(function (x) { toast(x.message, true); });
           } })));
         }
-        return card;
       }
 
-      var sponsorBox = null;
-      if (rights.sponsor) {
-        var sp = h("input", { type: "checkbox", id: "a-sp", checked: a.sponsored, onchange: function () {
-          api("POST", "articles/" + encodeURIComponent(a.id) + "/sponsored", { sponsored: sp.checked }).then(function (r) { a = r.article; refreshHead(); toast(a.sponsored ? "Mention « Sponsorisé » activée." : "Mention « Sponsorisé » retirée."); })
-            .catch(function (x) { sp.checked = !sp.checked; toast(x.message, true); });
-        } });
-        sponsorBox = h("div", { class: "hn-checks" }, h("label", { for: "a-sp" }, sp, "Contenu sponsorisé (affiche la mention)"));
+      function deleteArticle() {
+        confirmBox("Cette action est irréversible : l'article, ses traductions et ses corrections seront effacés.", { title: "Supprimer l'article ?", confirm: "Supprimer", danger: true, typed: "SUPPRIMER" }).then(function (ok) {
+          if (!ok) return;
+          api("DELETE", "articles/" + encodeURIComponent(a.id)).then(function () { dirty = false; toast("Article supprimé."); location.hash = "#/articles"; }).catch(function (x) { toast(x.message, true); });
+        });
       }
 
-      var right = h("div", { class: "hn-side" },
-        h("div", { class: "hn-card hn-form" }, h("h2", { text: "Publication" }), statusBox, actionsBox, sponsorBox,
-          h("div", { class: meta.siteRebuild ? "update-note" : "correction-note", style: "margin-top:14px", text: meta.siteRebuild
-          ? "Publier, dépublier, archiver ou corriger met le site à jour automatiquement (1 à 2 minutes)."
-          : "La mise à jour automatique du site n'est pas encore configurée : après une publication, le site ne changera qu'au prochain déploiement." })),
-        h("div", { class: "hn-card hn-form" }, h("h2", { text: "Classement" }),
-          label("Rubrique", "a-cat"), f.category, label("Type de contenu", "a-type"), f.type,
-          label("Auteur", "a-author"), f.author, label("Ou signature libre", "a-sign"), f.signature,
-          label("Adresse (slug)", "a-slug"), f.slug,
-          label("Mots-clés (séparés par des virgules)", "a-tags"), f.tags,
-          rights.publish ? h("div", { class: "hn-checks" },
-            h("label", { for: "a-feat" }, f.featured, "À la une"), h("label", { for: "a-urg" }, f.urgent, "Urgent"), h("label", { for: "a-rec" }, f.recommended, "Recommandé")) : null),
-        h("div", { class: "hn-card hn-form" }, h("h2", { text: "Image principale" }),
-          label("Adresse de l'image (https://…)", "a-iurl"), f.imgUrl,
-          label("Texte alternatif (obligatoire)", "a-ialt"), f.imgAlt,
-          label("Légende", "a-icap"), f.imgCap, label("Crédit photo", "a-icred"), f.imgCred,
-          h("p", { class: "hn-hint", text: "Le téléversement de fichiers viendra plus tard : pour l'instant, indiquez l'adresse d'une image déjà en ligne." })),
-        rights.delete ? h("div", { class: "hn-card" }, h("button", { type: "button", class: "hn-btn hn-btn-danger", text: "Supprimer définitivement", onclick: function () {
-          confirmBox("Cette action est irréversible : l'article, ses traductions et ses corrections seront effacés.", { title: "Supprimer l'article ?", confirm: "Supprimer", danger: true, typed: "SUPPRIMER" }).then(function (ok) {
-            if (!ok) return;
-            api("DELETE", "articles/" + encodeURIComponent(a.id)).then(function () { dirty = false; toast("Article supprimé."); location.hash = "#/articles"; }).catch(function (x) { toast(x.message, true); });
-          });
-        } })) : null);
-
+      /* ── assemblage ── */
       clear(view);
-      view.appendChild(h("p", { class: "hn-muted" }, h("a", { href: "#/articles", text: "← Tous les articles" })));
-      if (!editable) view.appendChild(h("div", { class: "correction-note", text: "Lecture seule : vous n'avez pas le droit de modifier cet article dans son état actuel." }));
-      view.appendChild(h("div", { class: "hn-layout" }, left, right));
+      wd.appendChild(titleBar);
+      wd.appendChild(ribbonEl);
+      wd.appendChild(h("div", { class: "wd-body" }, canvas, pane));
+      wd.appendChild(statusBar);
+      view.appendChild(wd);
 
-      ed = window.HNetEditor.create(edRoot, { html: "", ask: ask, onChange: function () { dirty = true; if (editable) saveBtn.disabled = false; } });
+      ed = window.HNetEditor.create({
+        ribbon: ribbonEl, content: contentEl, html: "", ask: ask, pickImage: pickImage, extraTabs: [viewTab],
+        onChange: function () { markDirty(); },
+        onStats: function (s) {
+          clear(statsEl);
+          statsEl.appendChild(h("span", { text: s.words + " mot" + (s.words > 1 ? "s" : "") }));
+          statsEl.appendChild(h("span", { class: "wd-opt", text: " · " + s.characters + " caractères" }));
+          statsEl.appendChild(h("span", { class: "wd-opt", text: " · lecture ≈ " + s.minutes + " min" }));
+        }
+      });
       if (!editable) ed.editor.setEditable(false);
       showLang(cur);
-      renderSources(); refreshHead(); renderActions(); renderCorrections();
+      renderSources(); renderMainImage(); renderCorrections(); refreshChrome();
+      paneBtn.classList.toggle("is-active", paneOn);
+      autosize(f.title); autosize(f.excerpt);
 
-      /* brouillon local de secours (si la connexion ou l'onglet est perdu) */
+      /* brouillon local de secours (connexion ou onglet perdu) */
       try {
         var saved = JSON.parse(localStorage.getItem(draftKey) || "null");
         if (saved && editable && saved.at > new Date(a.updatedAt).getTime() && saved.tr) {
@@ -653,10 +962,23 @@
         try { saveCur(); localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), tr: tr })); } catch (e) { /* ignoré */ }
       }, 5000);
 
+      function onKey(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (dirty && editable) save(false); }
+        if (e.key === "Escape") closeMenu();
+      }
+      function onResize() { autosize(f.title); autosize(f.excerpt); }
       function beforeUnload(e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } }
+      document.addEventListener("keydown", onKey);
+      document.addEventListener("click", onDocClick);
+      window.addEventListener("resize", onResize);
       window.addEventListener("beforeunload", beforeUnload);
       guard = function () { return !dirty || window.confirm("Des modifications n'ont pas été enregistrées. Quitter quand même ?"); };
-      cleanup = function () { clearInterval(timer); window.removeEventListener("beforeunload", beforeUnload); if (ed) ed.destroy(); };
+      cleanup = function () {
+        clearInterval(timer);
+        document.removeEventListener("keydown", onKey); document.removeEventListener("click", onDocClick);
+        window.removeEventListener("resize", onResize); window.removeEventListener("beforeunload", beforeUnload);
+        if (ed) ed.destroy();
+      };
     });
   }
 

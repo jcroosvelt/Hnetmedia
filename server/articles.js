@@ -203,8 +203,17 @@ async function update(s, id, body) {
     if (!img || !img.url) {
       qs.push({ text: "UPDATE articles SET main_media_id = NULL WHERE id = $1", params: [id] });
     } else {
-      const url = v.url(img, "url", { required: true, label: "Image principale" });
-      if (!url.startsWith("https://")) throw new HttpError(400, "L'image doit être servie en HTTPS.");
+      const raw = String(img.url).trim();
+      let url;
+      if (/^\/media\/[0-9a-f-]{36}$/i.test(raw)) {
+        // image téléversée sur ce site : elle doit exister
+        const ok = await db.query("SELECT 1 FROM media_files WHERE media_id = $1", [raw.slice(7).toLowerCase()]).catch(() => []);
+        if (!ok.length) throw new HttpError(400, "Image introuvable dans la médiathèque.", { field: "mainImage.url" });
+        url = raw.toLowerCase();
+      } else {
+        url = v.url(img, "url", { required: true, label: "Image principale" });
+        if (!url.startsWith("https://")) throw new HttpError(400, "L'image doit être servie en HTTPS (ou téléversée depuis l'appareil).");
+      }
       const alt = text(img.alt, 300);
       if (!alt) throw new HttpError(400, "Le texte alternatif de l'image est obligatoire (accessibilité).", { field: "mainImage.alt" });
       qs.push({

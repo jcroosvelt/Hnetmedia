@@ -136,6 +136,9 @@ function init(content) {
   };
 }
 
+// Image téléversée sur ce site (/media/<id>) → adresse complète pour les aperçus de partage et Google.
+function absUrl(u) { return u && u.startsWith("/") ? BASE_URL + u : u; }
+
 /* ── SQUELETTE DE PAGE ── */
 function wrapPage({ title, description, canonicalPath, ogImage, bodyHtml, structuredData = [], noindex = false, extraHead = "" }) {
   const canonical = `${BASE_URL}${canonicalPath}`;
@@ -439,14 +442,14 @@ function buildArticlePages() {
 
     const seoTitle = (a.seo && a.seo.title) || a.title;
     const seoDesc = (a.seo && a.seo.description) || a.excerpt;
-    const ogImg = (a.seo && a.seo.ogImage) || (a.mainImage && a.mainImage.url) || undefined;
+    const ogImg = absUrl((a.seo && a.seo.ogImage) || (a.mainImage && a.mainImage.url) || undefined);
 
     const articleLd = {
       "@context": "https://schema.org",
       "@type": "NewsArticle",
       headline: a.title,
       description: a.excerpt,
-      image: a.mainImage && a.mainImage.url ? [a.mainImage.url] : undefined,
+      image: a.mainImage && a.mainImage.url ? [absUrl(a.mainImage.url)] : undefined,
       author: { "@type": "Person", name: authorName },
       publisher: { "@type": "Organization", name: settings.siteName, logo: { "@type": "ImageObject", url: BASE_URL + "/icon-512.png" } },
       datePublished: a.publishedAt || undefined,

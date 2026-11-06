@@ -12,10 +12,11 @@ const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 function start(dist, port = 0) {
   const routes = {
     "/api/contact": require("../api/contact"), "/api/newsletter": require("../api/newsletter"),
-    "/api/views": require("../api/views"), "/api/admin": require("../api/admin"), "/api/health": require("../api/health"),
+    "/api/views": require("../api/views"), "/api/media": require("../api/media"), "/api/admin": require("../api/admin"), "/api/health": require("../api/health"),
   };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, "http://x");
+    if (u.pathname.startsWith("/media/")) { req.url = `/api/media?id=${u.pathname.slice(7)}`; return routes["/api/media"](req, res); }
     const key = Object.keys(routes).find((k) => u.pathname === k || u.pathname.startsWith(k + "/"));
     if (key) {
       if (key === "/api/newsletter" && u.pathname !== key) req.url = `${key}?action=${u.pathname.split("/").pop()}`;

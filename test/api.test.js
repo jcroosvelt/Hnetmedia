@@ -376,7 +376,7 @@ test("admin : abonnés, export CSV et statistiques", async () => {
 test("health : état minimal, sans fuite", async () => {
   const r = await call("GET", "/api/health");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true });
+  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true }, "le test configure un faux Deploy Hook local");
   assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
   assert.equal((await call("POST", "/api/health")).status, 405);
 });

@@ -1,7 +1,8 @@
 "use strict";
 /**
  * GET /api/health — contrôle de santé public et minimal.
- * Indique seulement si la base répond et si le secret de hachage est présent.
+ * Indique seulement si la base répond, si le secret de hachage est présent et si le Deploy Hook
+ * (mise à jour auto du site) est configuré — de simples oui/non.
  * Aucune valeur, aucun nom d'hôte, aucun détail d'erreur n'est exposé.
  */
 const { handler, send } = require("../server/http");
@@ -16,5 +17,7 @@ module.exports = handler(["GET"], async (req, res) => {
     console.error("[health] base injoignable :", e && e.code);
   }
   out.ok = out.database && out.hashSecret;
+  // Simple oui/non (jamais la valeur) : la mise à jour automatique du site après publication est-elle configurée ?
+  out.deployHook = Boolean(process.env.VERCEL_DEPLOY_HOOK_URL);
   send(res, out.ok ? 200 : 503, out, { "X-Robots-Tag": "noindex" });
 });

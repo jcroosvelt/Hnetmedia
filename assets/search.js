@@ -20,6 +20,12 @@
     return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
 
+  function esc(s) {
+    return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   function getParam(name) {
     return new URLSearchParams(location.search).get(name) || "";
   }
@@ -37,12 +43,12 @@
     resultsEl.innerHTML = list
       .map(function (a) {
         return (
-          '<a class="news-card reveal in" href="/article/' + a.slug + '.html">' +
-          '<div class="nc-img"><div class="nc-img-bg" style="background:' + (a.bg || "linear-gradient(135deg,#0A1F44,#334E7A)") + ';height:100%"></div>' +
-          '<span class="' + (a.tagClass || "tag") + ' nc-badge">' + a.categoryLabel + "</span></div>" +
-          '<h3 class="nc-title">' + a.title + "</h3>" +
-          '<p class="nc-excerpt">' + a.excerpt + "</p>" +
-          '<div class="nc-foot"><span class="nc-author">' + (a.authorName || "Rédaction") + "</span><span>·</span><span>" + (a.publishedLabel || "") + "</span></div>" +
+          '<a class="news-card reveal in" href="/article/' + esc(a.slug) + '.html">' +
+          '<div class="nc-img"><div class="nc-img-bg" style="background:linear-gradient(135deg,#0A1F44,#334E7A);height:100%"></div>' +
+          '<span class="' + esc(a.tagClass || "tag") + ' nc-badge">' + esc(a.categoryLabel) + "</span></div>" +
+          '<h3 class="nc-title">' + esc(a.title) + "</h3>" +
+          '<p class="nc-excerpt">' + esc(a.excerpt) + "</p>" +
+          '<div class="nc-foot"><span class="nc-author">' + esc(a.authorName || "Rédaction") + "</span><span>·</span><span>" + esc(a.publishedLabel || "") + "</span></div>" +
           "</a>"
         );
       })
@@ -69,11 +75,12 @@
     .then(function (r) { return r.json(); })
     .then(function (all) {
       qInput.value = getParam("q");
-      var cats = Array.from(new Set(all.map(function (a) { return a.category; })));
-      cats.forEach(function (c) {
+      var labels = {};
+      all.forEach(function (a) { labels[a.category] = a.categoryLabel || a.category; });
+      Object.keys(labels).forEach(function (c) {
         var opt = document.createElement("option");
         opt.value = c;
-        opt.textContent = c;
+        opt.textContent = labels[c];
         catSelect.appendChild(opt);
       });
       var tags = Array.from(new Set(all.flatMap(function (a) { return a.tags || []; })));

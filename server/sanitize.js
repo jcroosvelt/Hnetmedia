@@ -27,6 +27,15 @@ const OPTIONS = {
 };
 
 const cleanHtml = (html) => sanitizeHtml(String(html || ""), OPTIONS);
-const plainText = (s) => sanitizeHtml(String(s || ""), { allowedTags: [], allowedAttributes: {} }).trim();
+// Texte brut : balises retirées, puis entités décodées. On stocke « Éducation & santé »,
+// jamais « Éducation &amp; santé » (sinon l'éditeur l'affiche tel quel et chaque
+// enregistrement l'échappe un peu plus). L'échappement se fait à l'affichage.
+const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const decodeEntities = (s) => s.replace(/&(?:(amp|lt|gt|quot|apos)|#(\d{1,7})|#x([0-9a-f]{1,6}));/gi, (m, name, dec, hex) => {
+  if (name) return NAMED[name.toLowerCase()];
+  const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+  return cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : m;
+});
+const plainText = (s) => decodeEntities(sanitizeHtml(String(s || ""), { allowedTags: [], allowedAttributes: {} })).trim();
 
 module.exports = { cleanHtml, plainText };

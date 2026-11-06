@@ -65,7 +65,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .search-field{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:var(--r-sm);color:#fff;font-size:13px;padding:8px 36px 8px 14px;width:200px;outline:none;transition:.3s}
 .search-field::placeholder{color:rgba(255,255,255,.3)}
 .search-field:focus{background:rgba(255,255,255,.13);border-color:var(--orange);width:250px}
-.search-icon{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.35);font-size:14px;pointer-events:none}
+.search-icon{position:absolute;right:0;top:0;bottom:0;width:38px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.35);font-size:14px;cursor:pointer;border-radius:0 var(--r-sm) var(--r-sm) 0}
+.search-icon:hover{background:rgba(255,255,255,.1)}
+.search-icon:focus-visible,.search-field:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 
 /* Lang switch */
 .lang-sw{display:flex;gap:2px;background:rgba(255,255,255,.08);border-radius:var(--r-sm);padding:2px}
@@ -321,6 +323,18 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   .header-center{display:none}
   .sub-btn{display:none}
   .hero-side{grid-template-columns:1fr}
+  /* En-tête mobile : logo, recherche et langues tiennent sur une ligne (rien ne dépasse de l'écran) */
+  .header-top{gap:10px}
+  .logo-img{height:40px}
+  .header-right{flex:1;min-width:0;justify-content:flex-end;gap:8px}
+  .search-box{flex:1;min-width:0}
+  .search-field{width:100%;min-width:0;padding-right:34px}
+  .search-field:focus{width:100%}
+  .search-icon{width:34px}
+  .lang-btn{padding:5px 8px}
+}
+@media(max-width:360px){
+  .logo-img{height:34px}
 }
 
 /* ──────────────────────────────────────────

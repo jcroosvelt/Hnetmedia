@@ -35,8 +35,10 @@ Neon (main ; dev = essais) ──node build.js──▶  dist/  ──▶  Verce
 - `api/` : fonctions serverless Vercel — `contact.js`, `newsletter.js` (subscribe/confirm/unsubscribe), `views.js` (compteur + plus lus/tendances), `admin.js` (auth + API d'administration), `health.js` (contrôle : base joignable ?). Réécritures dans `vercel.json`.
 - `server/` : code partagé des fonctions et du build (`content.js` = lecture Neon pour `build.js`, `env.js`, db, http, sécurité, rate limiting, validation, anti-spam, e-mail, auth scrypt/sessions/CSRF, articles, nettoyage HTML)
 - `db/` : `migrations/*.sql` (0001 schéma, 0002 rôles, 0003 rubriques + réglages de base), `migrate.js`
-- `test/` : `npm test` (API de bout en bout) et `npm run test:browser` (Playwright : interface /admin, mobile + ordinateur, droits par rôle) contre un PostgreSQL **local** (`TEST_PG_ADMIN_URL`, port 5433), jamais contre Neon
+- `test/` : `npm test` (API de bout en bout) et `npm run test:browser` (Playwright : interface /admin, droits par rôle, barre de recherche, mobile + ordinateur) contre un PostgreSQL **local** (`TEST_PG_ADMIN_URL`, port 5433), jamais contre Neon
 - Dépendances de production figées : `sanitize-html` en **2.13.1** exactement (les versions ≥ 2.14 tirent htmlparser2 12, module ESM seul : la fonction admin plante sur Vercel). Node imposé : 22.x.
+- Sécurité du rendu : les textes (titres, chapeaux…) sont stockés **en texte brut** (« & » et non « &amp; »), balises retirées ; l'échappement se fait **à l'affichage** (`escAttr` dans `build.js`, `esc()` dans `search.js`). Tout JSON placé dans une balise `<script>` (JSON-LD) passe par `server/html.js › jsonForHtml` (échappe `< > &`) : un titre ne doit jamais pouvoir écrire `</script>`. Ne jamais insérer un champ d'article en HTML sans l'échapper.
+- `style.css` : seules corrections de bogue autorisées (design inchangé). Corrigé le 6 nov. 2026 : loupe de recherche cliquable (`pointer-events` retiré) et en-tête mobile (≤ 700 px : logo 40 px, recherche flexible, FR/EN visibles ; ≤ 360 px : logo 34 px).
 - Variables d'environnement : voir `.env.example`
 
 Statuts d'article : `brouillon` | `programme` | `publie` | `archive`. Public = `publie` ET `published_at` ≤ maintenant (seuls ceux-là sont lus par `build.js`).

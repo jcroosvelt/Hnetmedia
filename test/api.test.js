@@ -380,3 +380,27 @@ test("health : état minimal, sans fuite", async () => {
   assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
   assert.equal((await call("POST", "/api/health")).status, 405);
 });
+
+test("textes : « & », guillemets et « < » enregistrés tels quels, stables à chaque sauvegarde", async () => {
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 90);
+  const title = 'Éducation & santé : « bilan » "2026" a < b';
+  let r = await as(admin, "POST", "/api/admin/articles", { title, category: "sante" });
+  assert.equal(r.status, 201, r.text);
+  const id = r.json.article.id;
+  assert.equal(r.json.article.translations.fr.title, title, "titre conservé à la création");
+  for (let i = 0; i < 3; i++) {
+    const cur = (await as(admin, "GET", `/api/admin/articles/${id}`)).json.article.translations.fr.title;
+    r = await as(admin, "PUT", `/api/admin/articles/${id}`, { translations: { fr: { title: cur, excerpt: "R & D <b>gras</b> \"citation\"", content: "<p>Texte</p>" } } });
+    assert.equal(r.status, 200, r.text);
+  }
+  assert.equal(r.json.article.translations.fr.title, title, "titre inchangé après 3 enregistrements (pas de &amp;amp;amp;)");
+  assert.equal(r.json.article.translations.fr.excerpt, 'R & D gras "citation"', "balises retirées, & conservé");
+});
+
+test("JSON-LD : un titre ne peut pas fermer la balise <script>", () => {
+  const { jsonForHtml } = require("../server/html");
+  const piege = { headline: 'x</script><script>alert(1)</script> & <img src=x onerror=alert(2)>', n: "a\u2028b" };
+  const out = jsonForHtml(piege);
+  assert.ok(!/[<>&]/.test(out) && !out.includes("</script>"), "aucun < > & brut dans le JSON intégré à la page");
+  assert.deepEqual(JSON.parse(out), piege, "le JSON se relit à l'identique");
+});

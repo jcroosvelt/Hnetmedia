@@ -18,6 +18,7 @@ const fs = require("fs");
 const path = require("path");
 require("./server/env")(); // charge .env.local en local (sans effet sur Vercel)
 const { loadContent } = require("./server/content");
+const { jsonForHtml } = require("./server/html");
 
 const ROOT = __dirname;
 const PAGES_DIR = path.join(ROOT, "pages");
@@ -138,7 +139,7 @@ function init(content) {
 /* ── SQUELETTE DE PAGE ── */
 function wrapPage({ title, description, canonicalPath, ogImage, bodyHtml, structuredData = [], noindex = false, extraHead = "" }) {
   const canonical = `${BASE_URL}${canonicalPath}`;
-  const jsonLd = structuredData.map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`).join("\n");
+  const jsonLd = structuredData.map((obj) => `<script type="application/ld+json">${jsonForHtml(obj)}</script>`).join("\n");
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>

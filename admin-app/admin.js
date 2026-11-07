@@ -825,7 +825,17 @@
           entries.push(["Programmer…", function () {
             var soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
             var local = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-            ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer", intro: "L'article apparaîtra sur le site au premier déploiement qui suit cette date. Une mise à jour automatique à heure fixe n'est pas encore en place." }).then(function (v) {
+            // Texte selon la dernière vérification automatique réellement observée (jamais de promesse en l'air)
+            api("GET", "meta").catch(function () { return meta; }).then(function (m) {
+              var last = m && m.scheduledLastRun ? new Date(m.scheduledLastRun) : null;
+              var ageMin = last ? (Date.now() - last.getTime()) / 60000 : Infinity;
+              var intro = ageMin < 30
+                ? "Vérification automatique active (dernière il y a " + Math.max(1, Math.round(ageMin)) + " min) : l'article sera publié à quelques minutes de l'heure choisie."
+                : ageMin < 36 * 60
+                  ? "Le site vérifie les articles programmés environ une fois par jour (dernière vérification : " + fmt(last.toISOString()) + ") : l'article sera publié au plus tard dans les 24 heures qui suivent l'heure choisie."
+                  : "Aucune vérification automatique récente : l'article ne sera publié qu'au prochain déploiement du site après l'heure choisie.";
+              return ask("Programmer la publication", [{ name: "when", label: "Date et heure de publication", type: "datetime-local", value: local, required: true }], { submit: "Programmer", intro: intro });
+            }).then(function (v) {
               if (v) changeStatus("programme", { publishedAt: new Date(v.when).toISOString() }, "Publication programmée.");
             });
           }]);

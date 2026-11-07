@@ -23,7 +23,7 @@ const { jsonForHtml } = require("./server/html");
 const ROOT = __dirname;
 const PAGES_DIR = path.join(ROOT, "pages");
 const PARTIALS_DIR = path.join(ROOT, "partials");
-const DIST_DIR = path.join(ROOT, "dist");
+const DIST_DIR = process.env.BUILD_OUT ? path.resolve(process.env.BUILD_OUT) : path.join(ROOT, "dist"); // BUILD_OUT : tests uniquement
 
 /* ── UTILITAIRES ── */
 function readFile(p) {
@@ -76,6 +76,17 @@ function formatDateTimeFR(iso) {
     " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
+/* Adresse publique du site (canonical, sitemap, RSS, JSON-LD, aperçus de partage).
+   La variable SITE_URL (Vercel) prime : au jour de l'achat du domaine, il suffit de la changer.
+   Sinon, repli sur le réglage « baseUrl » de la base. Seule une origine https valide est acceptée. */
+function siteBase(cfg) {
+  try {
+    const u = new URL(String(process.env.SITE_URL || "").trim());
+    if (u.protocol === "https:" && (u.pathname === "/" || u.pathname === "")) return u.origin;
+  } catch (e) { /* SITE_URL absente ou invalide : repli */ }
+  return String(cfg.baseUrl).replace(/\/$/, "");
+}
+
 /* ── CONTENU (lu dans Neon avant la génération, voir init()) ── */
 let settings, categories, authors, allArticles, catBySlug, authorById, publishedArticles, BASE_URL;
 let headerHtml, footerHtml, orgLd, websiteLd;
@@ -103,7 +114,7 @@ function init(content) {
     console.log("ℹ️  Aucun article publié pour le moment. Le site affichera des états vides professionnels — comportement attendu tant qu'aucun article n'est publié dans /admin.");
   }
 
-  BASE_URL = settings.baseUrl.replace(/\/$/, "");
+  BASE_URL = siteBase(settings);
 
   /* ── PARTIELS ── */
   headerHtml = readFile(path.join(PARTIALS_DIR, "header.html"));
@@ -328,33 +339,63 @@ function buildHome() {
 /* ══════════════════════════════════════════════
    2) PAGES DE RUBRIQUES
    ══════════════════════════════════════════════ */
+const PER_PAGE = 10;
+const catPath = (slug, page) => (page <= 1 ? `/${slug}` : `/${slug}/page/${page}`);
+
+/* Barre de pagination : Précédent, 1 … courante±1 … dernière, Suivant. Liens réels (fonctionne sans JavaScript). */
+function paginationHtml(slug, page, pages) {
+  if (pages <= 1) return "";
+  const nums = [];
+  for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
+  const items = [];
+  if (page > 1) items.push(`<a class="page-btn" href="${catPath(slug, page - 1)}" rel="prev" aria-label="Page précédente">‹ Précédent</a>`);
+  let last = 0;
+  for (const n of nums) {
+    if (n - last > 1) items.push('<span class="page-btn" style="border-color:transparent;background:none;cursor:default" aria-hidden="true">…</span>');
+    items.push(n === page
+      ? `<a class="page-btn active" href="${catPath(slug, n)}" aria-current="page" aria-label="Page ${n}, page actuelle">${n}</a>`
+      : `<a class="page-btn" href="${catPath(slug, n)}" aria-label="Page ${n}">${n}</a>`);
+    last = n;
+  }
+  if (page < pages) items.push(`<a class="page-btn" href="${catPath(slug, page + 1)}" rel="next" aria-label="Page suivante">Suivant ›</a>`);
+  return `<nav class="pagination" id="catPagination" aria-label="Pagination — page ${page} sur ${pages}">${items.join("")}</nav>`;
+}
+
 function buildCategoryPages() {
   categories.forEach((c) => {
     const arts = publishedArticles.filter((a) => a.category === c.slug);
-    const gridHtml = arts.length
-      ? `<div class="news-grid" id="catGrid">${arts.map(newsCard).join("")}</div>
-         <div class="pagination" id="catPagination" hidden></div>
-         <script>window.__CAT_TOTAL__=${arts.length};</script>`
-      : emptyState(c.icon, `Aucun article publié dans ${c.label}`, "Cette rubrique s'affichera automatiquement dès qu'un article y sera publié dans le système de contenu.");
+    const pages = Math.max(1, Math.ceil(arts.length / PER_PAGE));
+    for (let page = 1; page <= pages; page++) {
+      const slice = arts.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+      const gridHtml = arts.length
+        ? `<div class="news-grid" id="catGrid">${slice.map(newsCard).join("")}</div>
+           ${paginationHtml(c.slug, page, pages)}`
+        : emptyState(c.icon, `Aucun article publié dans ${c.label}`, "Cette rubrique s'affichera automatiquement dès qu'un article y sera publié.");
 
-    const body = `
-    <main><div class="wrap">
-      <div class="breadcrumb"><a href="/">Accueil</a> / ${escAttr(c.label)}</div>
-      <div class="page-banner">
-        <div class="page-banner-icon">${c.icon}</div>
-        <div><div class="page-banner-title">${escAttr(c.label)}</div><div class="page-banner-desc">${escAttr(c.description)}</div></div>
-      </div>
-      <div class="sec-head" style="margin-top:32px"><div class="sec-label">Toute l'actualité ${escAttr(c.label)}</div><div class="sec-rule"></div></div>
-      ${gridHtml}
-    </div></main>`;
+      const body = `
+      <main><div class="wrap">
+        <div class="breadcrumb"><a href="/">Accueil</a> / ${page > 1 ? `<a href="${catPath(c.slug, 1)}">${escAttr(c.label)}</a> / Page ${page}` : escAttr(c.label)}</div>
+        <div class="page-banner">
+          <div class="page-banner-icon">${c.icon}</div>
+          <div><div class="page-banner-title">${escAttr(c.label)}</div><div class="page-banner-desc">${escAttr(c.description)}</div></div>
+        </div>
+        <div class="sec-head" style="margin-top:32px"><div class="sec-label">Toute l'actualité ${escAttr(c.label)}${page > 1 ? ` — page ${page}` : ""}</div><div class="sec-rule"></div></div>
+        ${gridHtml}
+      </div></main>`;
 
-    writeFile(`${c.slug}.html`, wrapPage({
-      title: `${c.label} — ${settings.siteName}`,
-      description: c.description,
-      canonicalPath: `/${c.slug}.html`,
-      bodyHtml: body,
-      structuredData: [breadcrumbLd([{ name: "Accueil", path: "/" }, { name: c.label, path: `/${c.slug}.html` }])],
-    }));
+      const file = page === 1 ? `${c.slug}.html` : `${c.slug}/page/${page}.html`;
+      const canonical = page === 1 ? `/${c.slug}.html` : `/${c.slug}/page/${page}.html`;
+      const links = [page > 1 ? `<link rel="prev" href="${BASE_URL}${page === 2 ? `/${c.slug}.html` : `/${c.slug}/page/${page - 1}.html`}">` : "",
+        page < pages ? `<link rel="next" href="${BASE_URL}/${c.slug}/page/${page + 1}.html">` : ""].filter(Boolean).join("\n");
+      writeFile(file, wrapPage({
+        title: `${c.label}${page > 1 ? ` — page ${page}` : ""} — ${settings.siteName}`,
+        description: page > 1 ? `${c.description} (page ${page})` : c.description,
+        canonicalPath: canonical,
+        extraHead: links,
+        bodyHtml: body,
+        structuredData: [breadcrumbLd([{ name: "Accueil", path: "/" }, { name: c.label, path: `/${c.slug}.html` }].concat(page > 1 ? [{ name: `Page ${page}`, path: canonical }] : []))],
+      }));
+    }
   });
 }
 
@@ -636,6 +677,10 @@ function buildSitemap() {
   const urls = [
     { loc: "/", priority: "1.0", freq: "hourly" },
     ...categories.map((c) => ({ loc: `/${c.slug}.html`, priority: "0.8", freq: "hourly" })),
+    ...categories.flatMap((c) => {
+      const n = Math.ceil(publishedArticles.filter((a) => a.category === c.slug).length / PER_PAGE);
+      return Array.from({ length: Math.max(0, n - 1) }, (_, i) => ({ loc: `/${c.slug}/page/${i + 2}.html`, priority: "0.5", freq: "hourly" }));
+    }),
     { loc: "/recherche.html", priority: "0.3", freq: "weekly" },
     ...Object.keys(STATIC_PAGES).filter((f) => f !== "recherche.html").map((f) => ({ loc: `/${f}`, priority: "0.4", freq: "monthly" })),
     ...publishedArticles.map((a) => ({ loc: `/article/${a.slug}.html`, priority: "0.7", freq: "monthly", lastmod: a.updatedAt || a.publishedAt })),

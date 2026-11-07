@@ -170,6 +170,11 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.click('.wd-tab[data-tab=affichage]'); await page.click(".hn-ed-view-preview"); await page.waitForSelector(".hn-dlg .article-body"); await page.screenshot({ path: `${SHOTS}/${name}-5-apercu.png` });
     await page.click(".hn-dlg >> text=Fermer");
 
+    // Programmation : le texte dit la vérité (aucune vérification automatique n'a eu lieu dans cette base neuve)
+    await page.click(".wd-publish"); await page.click('.wd-menuitem:has-text("Programmer")'); await page.waitForSelector(".hn-dlg .hn-sub");
+    ok(/Aucune vérification automatique récente/.test(await page.textContent(".hn-dlg .hn-sub")), "fenêtre « Programmer » : " + (await page.textContent(".hn-dlg .hn-sub")).slice(0, 70) + "…");
+    await page.click(".hn-dlg >> text=Annuler");
+
     // Publication (menu « Publier »)
     await page.click(".wd-publish"); await page.click(".wd-menuitem:has-text(\"Publier maintenant\")"); await page.click(".hn-dlg button:has-text(\"Publier\")");
     await page.waitForSelector(".hn-toast"); const toastTxt = await page.textContent(".hn-toast"); ok(/publié/i.test(toastTxt), "publication : " + toastTxt);

@@ -118,7 +118,8 @@ async function meta(req, res) {
     db.query("SELECT id, name FROM authors WHERE active ORDER BY name"),
   ]);
   const roles = auth.can(s, "user.manage") ? await db.query("SELECT code, label, description FROM roles ORDER BY id") : [];
-  send(res, 200, { ok: true, categories, tags, authors, roles, permissions: [...s.perms].sort(), siteRebuild: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL) });
+  const last = (await db.query("SELECT value FROM site_settings WHERE key = 'scheduledLastRun'"))[0];
+  send(res, 200, { ok: true, categories, tags, authors, roles, permissions: [...s.perms].sort(), siteRebuild: Boolean(process.env.VERCEL_DEPLOY_HOOK_URL), scheduledLastRun: last ? last.value : null });
 }
 
 /* ── Articles ── */

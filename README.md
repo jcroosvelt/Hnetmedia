@@ -37,6 +37,6 @@ Vercel (Settings → Environment Variables) et dans `.env.local` (ignoré par gi
 | Formulaire de contact | **Actif** : le message est enregistré (`/admin › Messages`). Alerte par e-mail à l'équipe : facultative (Resend) |
 | Newsletter | API prête, **non branchée** au site : exige un nom de domaine vérifié chez Resend (pas encore acheté) |
 | Mise à jour du site à chaque publication | Prête côté code ; il reste à créer le Deploy Hook Vercel (`VERCEL_DEPLOY_HOOK_URL`) |
-| Publication à heure programmée | Pas de déclencheur horaire : l'article paraît au premier déploiement après sa date |
+| Publication à heure programmée | **Actif** une fois `CRON_SECRET` défini dans Vercel : vérification quotidienne incluse ; pour publier à quelques minutes près, un service externe doit appeler `/api/scheduled` toutes les 5 min (voir `CLAUDE.md`) |
 | Images | **Actif** : téléversement depuis l'appareil (réduit automatiquement), médiathèque, ou adresse https ; stockées dans Neon. Pas encore de suppression d'images |
 | Contenu éditorial en anglais / kreyòl | Stocké et relu dans l'éditeur, **pas encore publié** sur le site |

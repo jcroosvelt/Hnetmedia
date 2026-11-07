@@ -1,7 +1,7 @@
 "use strict";
 /**
  * Lecture du contenu PUBLIC depuis Neon, pour build.js.
- * Ne remonte que ce qui peut être publié : articles « publie » dont la date est passée,
+ * Ne remonte que ce qui peut être publié : articles « publie » (ou « programme » échu) dont la date est passée,
  * partenaires actifs, offres ouvertes, auteurs actifs. Les brouillons, les articles
  * programmés et archivés ne quittent jamais la base.
  *
@@ -14,7 +14,9 @@ const iso = (v) => (v ? new Date(v).toISOString() : null);
 
 async function loadContent() {
   const db = getDb();
-  const PUBLISHED = "a.status = 'publie' AND a.published_at <= now()";
+  // Public = « publié » dont la date est passée, ou « programmé » dont l'heure est arrivée (le déclencheur
+  // horaire fait passer ces derniers à « publié » ; ici, tout déploiement après l'heure les inclut déjà).
+  const PUBLISHED = "a.status IN ('publie', 'programme') AND a.published_at <= now()";
 
   const [cats, rows, authors, tags, partners, jobs, arts, artTags, sources, corrections] = await Promise.all([
     db.query(`SELECT slug, label, icon, color, tag_class AS "tagClass", description FROM categories ORDER BY position, slug`),
@@ -32,7 +34,11 @@ async function loadContent() {
               FROM articles a
               JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
               LEFT JOIN media m ON m.id = a.main_media_id
-              WHERE ${PUBLISHED} ORDER BY a.published_at DESC`),
+              WHERE ${PUBLISHED}
+                -- un article « programmé » n'est affiché que s'il est encore complet (jamais à moitié publié)
+                AND (a.status = 'publie' OR (a.category_slug IS NOT NULL
+                     AND (a.author_id IS NOT NULL OR btrim(COALESCE(a.author_name, '')) <> '') AND btrim(t.content) <> ''))
+              ORDER BY a.published_at DESC`),
     db.query(`SELECT x.article_id, g.label FROM article_tags x JOIN tags g ON g.slug = x.tag_slug JOIN articles a ON a.id = x.article_id
               WHERE ${PUBLISHED} ORDER BY g.label`),
     db.query(`SELECT s.article_id, s.name, s.url, s.description FROM article_sources s JOIN articles a ON a.id = s.article_id

@@ -19,5 +19,7 @@ module.exports = handler(["GET"], async (req, res) => {
   out.ok = out.database && out.hashSecret;
   // Simple oui/non (jamais la valeur) : la mise à jour automatique du site après publication est-elle configurée ?
   out.deployHook = Boolean(process.env.VERCEL_DEPLOY_HOOK_URL);
+  // Adresse publique du site (déjà visible de tous) : permet de vérifier la configuration de SITE_URL.
+  try { out.siteUrl = new URL(process.env.SITE_URL).origin; } catch (e) { out.siteUrl = null; }
   send(res, out.ok ? 200 : 503, out, { "X-Robots-Tag": "noindex" });
 });

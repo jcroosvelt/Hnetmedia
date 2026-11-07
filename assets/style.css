@@ -413,9 +413,10 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .badge-opinion{background:#4B5563;color:#fff}
 
 /* Pagination */
-.pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin:40px 0}
+.pagination{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;margin:40px 0}
 .page-btn{min-width:36px;height:36px;padding:0 10px;border-radius:var(--r-sm);border:1px solid var(--gray-lt);background:var(--white);color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
 .page-btn:hover{border-color:var(--orange);color:var(--orange)}
+.page-btn:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .page-btn.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .page-btn:disabled{opacity:.35;cursor:not-allowed}
 

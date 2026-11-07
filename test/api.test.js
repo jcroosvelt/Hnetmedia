@@ -22,6 +22,7 @@ Object.assign(process.env, {
   RESEND_API_KEY: "test", EMAIL_FROM: "newsletter@example.org", EMAIL_TEST_SINK: "1",
   ADMIN_SETUP_TOKEN: "code-installation-test-0123456789",
   SITE_URL: "https://www.hnetmedia.com",
+  CRON_SECRET: "secret-cron-de-test-0123456789abcdef",
 });
 
 const ROOT = path.join(__dirname, "..");
@@ -45,6 +46,7 @@ const routes = {
   "/api/admin": require("../api/admin"),
   "/api/health": require("../api/health"),
   "/api/media": require("../api/media"),
+  "/api/scheduled": require("../api/scheduled"),
 };
 
 test.before(async () => {
@@ -377,7 +379,7 @@ test("admin : abonnés, export CSV et statistiques", async () => {
 test("health : état minimal, sans fuite", async () => {
   const r = await call("GET", "/api/health");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true }, "le test configure un faux Deploy Hook local");
+  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true, siteUrl: "https://www.hnetmedia.com" }, "le test configure un faux Deploy Hook et une adresse de site");
   assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
   assert.equal((await call("POST", "/api/health")).status, 405);
 });
@@ -538,4 +540,52 @@ test("images : téléversement validé par le contenu, droits, service public en
   const stored = await db().query("SELECT length(data)::int n FROM media_files WHERE media_id = $1", [m.id]);
   assert.equal(stored[0].n, png.length, "octets enregistrés dans la base");
   assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'media.televersement'")).length >= 3, "téléversements journalisés");
+});
+
+/* ═════════════════════════ PUBLICATION PROGRAMMÉE ═════════════════════════ */
+test("programmation : point d'entrée protégé, promotion à l'heure, articles incomplets jamais publiés à moitié", async () => {
+  const secret = process.env.CRON_SECRET;
+  const bearer = (x) => ({ authorization: `Bearer ${x}` });
+  await db().query(`INSERT INTO articles (id, slug, status, category_slug, author_name, published_at) VALUES
+    ('s-ok', 'prog-ok', 'programme', 'culture', 'Rédaction', now() - interval '2 minutes'),
+    ('s-incomplet', 'prog-incomplet', 'programme', NULL, 'Rédaction', now() - interval '2 minutes'),
+    ('s-futur', 'prog-futur', 'programme', 'culture', 'Rédaction', now() + interval '2 days')`);
+  await db().query(`INSERT INTO article_translations (article_id, lang, title, content, reviewed) VALUES
+    ('s-ok', 'fr', 'Programmé complet', '<p>Texte</p>', true), ('s-incomplet', 'fr', 'Programmé incomplet', '<p>Texte</p>', true), ('s-futur', 'fr', 'Programmé futur', '<p>Texte</p>', true)`);
+
+  // sécurité du point d'entrée
+  assert.equal((await call("GET", "/api/scheduled", { origin: null })).status, 401, "sans secret");
+  assert.equal((await call("GET", "/api/scheduled", { origin: null, headers: bearer("pas-le-bon-secret-pas-le-bon-0000") })).status, 401, "mauvais secret");
+  process.env.CRON_SECRET = "court"; assert.equal((await call("GET", "/api/scheduled", { origin: null, headers: bearer("court") })).status, 503, "secret trop court : point d'entrée fermé");
+  delete process.env.CRON_SECRET; assert.equal((await call("GET", "/api/scheduled", { origin: null, headers: bearer("x") })).status, 503, "sans CRON_SECRET : fermé");
+  process.env.CRON_SECRET = secret;
+  assert.equal((await db().query("SELECT status::text s FROM articles WHERE id = 's-ok'"))[0].s, "programme", "rien n'a bougé sans secret valide");
+
+  // le site (build) inclut déjà l'article échu et complet, jamais l'incomplet ni le futur
+  const { loadContent } = require("../server/content");
+  let slugs = (await loadContent()).articles.map((x) => x.slug);
+  assert.ok(slugs.includes("prog-ok") && !slugs.includes("prog-incomplet") && !slugs.includes("prog-futur"), "lecture du build : " + slugs.join(","));
+
+  // exécution (Vercel Cron appelle en GET)
+  const before = hookCalls;
+  let r = await call("GET", "/api/scheduled", { origin: null, headers: bearer(secret) });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([r.json.promoted, r.json.slugs, r.json.blocked, r.json.rebuild], [1, ["prog-ok"], ["prog-incomplet"], true]);
+  assert.equal(hookCalls, before + 1, "reconstruction du site demandée");
+  const st = Object.fromEntries((await db().query("SELECT id, status::text s FROM articles WHERE id LIKE 's-%'")).map((x) => [x.id, x.s]));
+  assert.deepEqual(st, { "s-ok": "publie", "s-incomplet": "programme", "s-futur": "programme" });
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'article.statut.publie_auto' AND entity_id = 's-ok'")).length === 1, "promotion journalisée");
+  assert.ok((await db().query("SELECT 1 FROM site_settings WHERE key = 'scheduledLastRun'")).length === 1, "dernière vérification enregistrée");
+
+  // idempotent : une seconde exécution ne change rien et ne relance pas le site
+  r = await call("POST", "/api/scheduled", { origin: null, headers: bearer(secret) });
+  assert.deepEqual([r.status, r.json.promoted, r.json.rebuild], [200, 0, false]);
+  assert.equal(hookCalls, before + 1);
+  slugs = (await loadContent()).articles.map((x) => x.slug);
+  assert.ok(slugs.includes("prog-ok") && !slugs.includes("prog-incomplet"), "toujours cohérent après promotion");
+
+  // l'administration voit la dernière vérification (pour afficher un texte honnête)
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 150);
+  const meta = (await as(admin, "GET", "/api/admin/meta")).json;
+  assert.ok(meta.scheduledLastRun && Date.now() - new Date(meta.scheduledLastRun).getTime() < 60000, "meta.scheduledLastRun renseigné");
 });

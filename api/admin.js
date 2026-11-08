@@ -25,6 +25,9 @@
  * Médiathèque
  *   GET media                         images téléversées (les siennes, ou toutes avec media.manage)
  *   POST media                        octets bruts d'une image JPEG/PNG/WebP ≤ 2 Mo → { url:"/media/<id>" }
+ *   DELETE media/:id                  refusée tant que l'image est utilisée
+ * Équipe / partenaires / offres / réglages (permissions author.manage, partner.manage, job.manage, settings.manage)
+ *   GET|POST team, partners, jobs   PUT|DELETE team/:id, partners/:id, jobs/:id   GET|PUT settings
  * Comptes
  *   GET users   POST users   PATCH users/:id
  * Toute requête qui modifie exige : session valide + en-tête X-CSRF-Token + Origin du site.
@@ -35,6 +38,7 @@ const v = require("../server/validate");
 const auth = require("../server/auth");
 const articles = require("../server/articles");
 const media = require("../server/media");
+const catalog = require("../server/catalog");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
 
@@ -222,10 +226,34 @@ async function statsRoute(req, res, parts) {
 
 /* ── Médiathèque (images téléversées) ── */
 async function mediaRoute(req, res, parts) {
-  if (parts[1]) throw new HttpError(404, "Route inconnue.");
+  const id = parts[1];
+  if (parts[2]) throw new HttpError(404, "Route inconnue.");
   const s = await auth.requireAuth(req, "media.upload");
-  if (req.method === "GET") return send(res, 200, { ok: true, items: await media.list(s) });
-  if (req.method === "POST") return send(res, 201, { ok: true, media: await media.upload(s, req) });
+  if (!id && req.method === "GET") return send(res, 200, { ok: true, items: await media.list(s) });
+  if (!id && req.method === "POST") return send(res, 201, { ok: true, media: await media.upload(s, req) });
+  if (id && req.method === "DELETE") return send(res, 200, await media.remove(s, id));
+  throw new HttpError(405, "Méthode non autorisée.");
+}
+
+/* ── Équipe, partenaires, offres d'emploi, réglages (CRUD générique par permission) ── */
+function crud(perm, svc) {
+  return async (req, res, parts) => {
+    const id = parts[1];
+    if (parts[2]) throw new HttpError(404, "Route inconnue.");
+    const s = await auth.requireAuth(req, perm);
+    const m = req.method;
+    if (!id && m === "GET") return send(res, 200, { ok: true, items: await svc.list() });
+    if (!id && m === "POST") return send(res, 201, { ok: true, ...(await svc.create(s, await readBody(req))) });
+    if (id && m === "PUT") return send(res, 200, { ok: true, ...(await svc.update(s, id, await readBody(req))) });
+    if (id && m === "DELETE") return send(res, 200, await svc.remove(s, id));
+    throw new HttpError(405, "Méthode non autorisée.");
+  };
+}
+async function settingsRoute(req, res, parts) {
+  if (parts[1]) throw new HttpError(404, "Route inconnue.");
+  const s = await auth.requireAuth(req, "settings.manage");
+  if (req.method === "GET") return send(res, 200, { ok: true, settings: await catalog.settings.get() });
+  if (req.method === "PUT") return send(res, 200, { ok: true, settings: await catalog.settings.save(s, await readBody(req)) });
   throw new HttpError(405, "Méthode non autorisée.");
 }
 
@@ -302,6 +330,10 @@ const ROUTES = {
   stats: statsRoute,
   media: mediaRoute,
   users: usersRoute,
+  team: crud("author.manage", catalog.authors),
+  partners: crud("partner.manage", catalog.partners),
+  jobs: crud("job.manage", catalog.jobs),
+  settings: settingsRoute,
 };
 
 module.exports = handler(["GET", "POST", "PUT", "PATCH", "DELETE"], async (req, res) => {

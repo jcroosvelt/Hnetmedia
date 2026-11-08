@@ -22,6 +22,12 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
       SELECT $1 || g, 'fr', 'Article de test ' || $2 || ' n° ' || g, 'Chapeau de test.', '<p>Texte de test.</p>', true FROM generate_series(1, $3) g`, [cat + "-id", cat, n]);
   };
   await seed("politique", 25); await seed("sport", 3); await seed("monde", 75); await seed("culture", 10); await seed("tech", 11);
+  // Auteur (25 articles = 3 pages) et tag (11 articles = 2 pages)
+  await db.query("INSERT INTO authors (id, name, role) VALUES ('jean-test', 'Jean Test', 'Reporter')");
+  await db.query("UPDATE articles SET author_id = 'jean-test' WHERE id IN (SELECT id FROM articles WHERE category_slug = 'monde' ORDER BY id LIMIT 25)");
+  await db.query("INSERT INTO tags (slug, label) VALUES ('haiti', 'Haïti')");
+  await db.query("INSERT INTO article_tags (article_id, tag_slug) SELECT id, 'haiti' FROM articles WHERE category_slug = 'tech'");
+  await db.query("INSERT INTO article_tags (article_id, tag_slug) SELECT id, 'haiti' FROM articles WHERE category_slug = 'sport' LIMIT 3");
   await db.end();
   execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: OUT }, stdio: "pipe" });
   const server = await start(OUT); const base = `http://127.0.0.1:${server.address().port}`;
@@ -59,11 +65,23 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (barre longue)");
     await page.locator("#catPagination").scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(os.tmpdir(), `pagination-${name.split(" ")[0]}.png`) });
     await page.goto("/monde/page/8"); ok((await cards()) === 5, "dernière page : 5 articles");
+    // auteurs et tags paginés comme les rubriques
+    const gcards = () => page.locator(".news-grid .news-card").count();
+    r = await page.goto("/auteur/jean-test"); ok(r.status() === 200 && (await gcards()) === 10 && (await items()).join("|") === "1|2|3|Suivant ›", "auteur, page 1 : 10 articles, barre " + (await items()).join(" | "));
+    r = await page.goto("/auteur/jean-test/page/3"); ok(r.status() === 200 && (await gcards()) === 5 && (await items()).join("|") === "‹ Précédent|1|2|3", "auteur, page 3 : 5 derniers");
+    ok((await page.getAttribute("link[rel=canonical]", "href")) === "https://www.hnetmedia.com/auteur/jean-test/page/3.html" && (await page.textContent(".author-name")) === "Jean Test", "auteur, page 3 : canonical et fiche répétée");
+    ok((await page.getAttribute("link[rel=prev]", "href")).endsWith("/auteur/jean-test/page/2.html"), "auteur : rel=prev");
+    r = await page.goto("/auteur/jean-test/page/4"); ok(r.status() === 404, "auteur, page 4 inexistante : 404");
+    r = await page.goto("/tag/haiti"); ok(r.status() === 200 && (await gcards()) === 10 && (await items()).join("|") === "1|2|Suivant ›", "tag, page 1 : 10 articles (14 au total)");
+    await page.click('#catPagination a[aria-label="Page 2"]'); await page.waitForURL(/\/tag\/haiti\/page\/2/);
+    ok((await gcards()) === 4 && /page 2/.test(await page.title()), "tag, page 2 par clic : 4 articles, titre " + (await page.title()));
+    ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "tag : pas de débordement horizontal");
     ok(errs.length === 0, "aucune erreur JavaScript");
     await ctx.close();
   }
   const sm = fs.readFileSync(path.join(OUT, "sitemap.xml"), "utf8");
   ok(/politique\/page\/2\.html/.test(sm) && /politique\/page\/3\.html/.test(sm) && /monde\/page\/8\.html/.test(sm) && !/sport\/page\//.test(sm), "plan du site : pages 2 et suivantes listées, pas de page fantôme");
+  ok(/auteur\/jean-test\/page\/3\.html/.test(sm) && /tag\/haiti\/page\/2\.html/.test(sm) && !/jean-test\/page\/4/.test(sm), "plan du site : pages 2+ des auteurs et des tags");
   ok(!fs.existsSync(path.join(OUT, "politique", "page", "4.html")), "aucun fichier de page vide");
   await browser.close(); server.close(); await require(ROOT + "/server/db").getDb().end();
   fs.rmSync(OUT, { recursive: true, force: true });

@@ -72,13 +72,37 @@ async function upload(s, req) {
   return { id, url: `/media/${id}`, width: info.width, height: info.height, size: body.length, mime: info.mime };
 }
 
+// Nombre d'endroits où l'image est utilisée (image principale, texte d'article, partage, photo d'équipe).
+const USAGE_SQL = `(
+    (SELECT count(*) FROM articles x JOIN media mm ON mm.id = x.main_media_id WHERE mm.url = m.url OR mm.id = m.id)
+  + (SELECT count(*) FROM article_translations t WHERE position(m.url IN t.content) > 0 OR t.og_image_url = m.url)
+  + (SELECT count(*) FROM authors a WHERE a.photo_url = m.url)
+  + (SELECT count(*) FROM partners p WHERE p.logo_media_id = m.id)
+)::int`;
+
 async function list(s) {
   const own = can(s, "media.manage") ? "" : "AND m.uploaded_by = $1";
   const rows = await getDb().query(
-    `SELECT m.id, m.url, m.width, m.height, m.size_bytes AS size, m.created_at AS "createdAt", u.display_name AS "by"
+    `SELECT m.id, m.url, m.alt, m.width, m.height, m.size_bytes AS size, m.created_at AS "createdAt", u.display_name AS "by", ${USAGE_SQL} AS usage
      FROM media m JOIN media_files f ON f.media_id = m.id LEFT JOIN users u ON u.id = m.uploaded_by
      WHERE true ${own} ORDER BY m.created_at DESC LIMIT 60`, own ? [s.user.id] : []);
   return rows;
+}
+
+/** Supprime une image — refusée tant qu'elle est utilisée quelque part (jamais d'image cassée en ligne). */
+async function remove(s, id) {
+  if (!UUID_RE.test(String(id || ""))) throw new HttpError(404, "Image introuvable.");
+  const db = getDb();
+  const rows = await db.query(
+    `SELECT m.id, m.uploaded_by, ${USAGE_SQL} AS usage FROM media m JOIN media_files f ON f.media_id = m.id WHERE m.id = $1`, [id]);
+  if (!rows.length) throw new HttpError(404, "Image introuvable.");
+  if (!can(s, "media.manage") && rows[0].uploaded_by !== s.user.id) throw new HttpError(403, "Vous ne pouvez supprimer que vos propres images.");
+  if (rows[0].usage > 0) {
+    throw new HttpError(409, `Cette image est utilisée à ${rows[0].usage} endroit${rows[0].usage > 1 ? "s" : ""} (article, photo d'équipe…). Retirez-la d'abord de ces contenus.`);
+  }
+  await db.query("DELETE FROM media WHERE id = $1", [id]);
+  await audit(s.user.id, "media.suppression", "media", id);
+  return { ok: true };
 }
 
 /** Sert l'image (route publique /media/<id>). Contenu immuable : cache d'un an. */
@@ -100,4 +124,4 @@ async function serve(req, res, id) {
   res.end(req.method === "HEAD" ? undefined : buf);
 }
 
-module.exports = { upload, list, serve, sniff, MAX_BYTES, UUID_RE };
+module.exports = { upload, list, remove, serve, sniff, MAX_BYTES, UUID_RE };

@@ -589,3 +589,125 @@ test("programmation : point d'entrée protégé, promotion à l'heure, articles 
   const meta = (await as(admin, "GET", "/api/admin/meta")).json;
   assert.ok(meta.scheduledLastRun && Date.now() - new Date(meta.scheduledLastRun).getTime() < 60000, "meta.scheduledLastRun renseigné");
 });
+
+/* ═════════════════════════ MÉDIAS, ÉQUIPE, PARTENAIRES, OFFRES, RÉGLAGES ═════════════════════════ */
+test("médiathèque : suppression refusée tant que l'image sert, droits par rôle", async () => {
+  const pw = "mot de passe de test 2026";
+  const contrib = await loginAs("contrib@h.com", pw, 160);
+  const editeur = await loginAs("editeur@h.com", pw, 161);
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 162);
+
+  const used = (await upload(contrib, fakeImage("png", 500, 500))).json.media;
+  const free = (await upload(contrib, fakeImage("png", 400, 400))).json.media;
+  const art = (await as(contrib, "POST", "/api/admin/articles", { title: "Avec image", category: "culture" })).json.article;
+  assert.equal((await as(contrib, "PUT", `/api/admin/articles/${art.id}`, { mainImage: { url: used.url, alt: "Vue" } })).status, 200);
+
+  const list = (await as(contrib, "GET", "/api/admin/media")).json.items;
+  assert.equal(list.find((x) => x.id === used.id).usage, 1, "usage compté (image principale)");
+  assert.equal(list.find((x) => x.id === free.id).usage, 0);
+
+  assert.equal((await as(contrib, "DELETE", `/api/admin/media/${used.id}`)).status, 409, "image utilisée : refus");
+  assert.equal((await getMedia(used.id)).status, 200, "toujours servie");
+  assert.equal((await as(editeur, "DELETE", `/api/admin/media/${free.id}`)).status, 200, "l'éditeur (media.manage) supprime n'importe quelle image libre");
+  assert.equal((await getMedia(free.id)).status, 404, "image supprimée = introuvable");
+  assert.equal((await as(admin, "DELETE", `/api/admin/media/${free.id}`)).status, 404, "déjà supprimée");
+  assert.equal((await as(admin, "DELETE", "/api/admin/media/pas-un-uuid")).status, 404);
+
+  const mine = (await upload(contrib, fakeImage("png", 300, 300))).json.media;
+  const other = (await upload(admin, fakeImage("png", 300, 310))).json.media;
+  assert.equal((await as(contrib, "DELETE", `/api/admin/media/${other.id}`)).status, 403, "un contributeur ne supprime que les siennes");
+  assert.equal((await as(contrib, "DELETE", `/api/admin/media/${mine.id}`)).status, 200);
+
+  // image dans le texte d'un article (pas seulement en image principale)
+  const inText = (await upload(admin, fakeImage("png", 320, 320))).json.media;
+  const art2 = (await as(admin, "POST", "/api/admin/articles", { title: "Image dans le texte", category: "culture" })).json.article;
+  await as(admin, "PUT", `/api/admin/articles/${art2.id}`, { translations: { fr: { title: "Image dans le texte", content: `<figure><img src="${inText.url}" alt="x"></figure>` } } });
+  assert.equal((await as(admin, "DELETE", `/api/admin/media/${inText.id}`)).status, 409, "image présente dans le texte : refus");
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'media.suppression'")).length >= 2, "suppressions journalisées");
+});
+
+test("équipe, partenaires, offres, réglages : droits, validation, rendu public", async () => {
+  const pw = "mot de passe de test 2026";
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 170);
+  const com = await loginAs("com@h.com", pw, 171);
+  const chef = await loginAs("chef@hnetmedia.com", "mot de passe du chef 2026", 172);
+  const journa = await loginAs("journa@h.com", pw, 173);
+
+  // droits : commercial = partenaires ; rédacteur en chef = équipe + offres ; réglages = administrateur seul
+  assert.equal((await as(journa, "GET", "/api/admin/partners")).status, 403);
+  assert.equal((await as(com, "GET", "/api/admin/partners")).status, 200);
+  assert.equal((await as(com, "GET", "/api/admin/jobs")).status, 403);
+  assert.equal((await as(chef, "GET", "/api/admin/jobs")).status, 200);
+  assert.equal((await as(chef, "GET", "/api/admin/team")).status, 200);
+  assert.equal((await as(com, "GET", "/api/admin/team")).status, 403);
+  assert.equal((await as(chef, "GET", "/api/admin/settings")).status, 403);
+  assert.equal((await as(admin, "GET", "/api/admin/settings")).status, 200);
+  assert.equal((await call("POST", "/api/admin/partners", { body: { name: "X" } })).status, 401);
+
+  // partenaires : https obligatoire, pas de faux contenu
+  assert.equal((await as(com, "POST", "/api/admin/partners", { name: "Sans lien", url: "http://non-https.example" })).status, 400);
+  assert.equal((await as(com, "POST", "/api/admin/partners", { name: "Piège", url: "javascript:alert(1)" })).status, 400);
+  assert.equal((await as(com, "POST", "/api/admin/partners", { name: "" })).status, 400);
+  let r = await as(com, "POST", "/api/admin/partners", { name: "Partenaire <b>Réel</b> & Cie", url: "https://partenaire.example/", description: "Soutien $& test", kind: "partenaire" });
+  assert.equal(r.status, 201, r.text);
+  const pid = r.json.id;
+  const hidden = (await as(com, "POST", "/api/admin/partners", { name: "Inactif", active: false })).json.id;
+
+  // offres : « ouvert » exige un moyen de postuler
+  assert.equal((await as(chef, "POST", "/api/admin/jobs", { title: "Reporter", description: "Texte", status: "ouvert" })).status, 400);
+  r = await as(chef, "POST", "/api/admin/jobs", { title: "Reporter terrain", description: "Couvrir l'actualité.\nSecond $1 paragraphe.", contract: "CDD", location: "Pétion-Ville", status: "ouvert", applyEmail: "recrutement@exemple.test" });
+  assert.equal(r.status, 201, r.text);
+  const jid = r.json.id;
+  const brouillon = (await as(chef, "POST", "/api/admin/jobs", { title: "Brouillon", description: "X" })).json.id;
+
+  // équipe : fiche, lien https, suppression bloquée si signataire
+  assert.equal((await as(chef, "POST", "/api/admin/team", { name: "Mauvais", social: { twitter: "http://x.example" } })).status, 400);
+  r = await as(chef, "POST", "/api/admin/team", { name: "Marie Éclair", role: "Reporter", bio: "Bio réelle.", social: { twitter: "https://x.com/marie" } });
+  assert.equal(r.status, 201, r.text);
+  const aid = r.json.id;
+  assert.match(aid, /^marie-eclair/);
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Signé", category: "culture" })).json.article;
+  await db().query("UPDATE articles SET author_id = $1 WHERE id = $2", [aid, art.id]);
+  assert.equal((await as(chef, "DELETE", `/api/admin/team/${aid}`)).status, 409, "signataire d'un article : suppression refusée");
+
+  // réglages : validation
+  const cur = (await as(admin, "GET", "/api/admin/settings")).json.settings;
+  const save = (patch) => as(admin, "PUT", "/api/admin/settings", { ...cur, ...patch });
+  assert.equal((await save({ siteName: "" })).status, 400);
+  assert.equal((await save({ social: { facebook: "http://pas-https.example" } })).status, 400);
+  assert.equal((await save({ contactCategories: [] })).status, 400);
+  assert.equal((await save({ contactCategories: ["Autre", "autre"] })).status, 400, "doublon refusé");
+  r = await save({ social: { facebook: "https://facebook.com/hnetmedia" }, legal: { director: "J. Roosvelt Jean Charles", hostName: "Vercel Inc.", hostAddress: "340 S Lemon Ave, Walnut, CA", registration: "" }, contactCategories: ["Rédaction", "Droit de réponse", "Autre"] });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.settings.social.facebook, "https://facebook.com/hnetmedia");
+  assert.deepEqual((await db().query("SELECT value FROM site_settings WHERE key = 'contactCategories'"))[0].value, ["Rédaction", "Droit de réponse", "Autre"]);
+  assert.equal((await call("POST", "/api/contact", { body: { name: "Lecteur", email: "l@x.test", category: "Publicité", subject: "Sujet de test", message: "Message de test assez long pour passer.", hp: "", ts: formTs() }, headers: ip(171) })).status, 400, "type retiré des réglages = refusé par le contact");
+
+  // rendu public : seul le réel apparaît, rien d'inactif ni de brouillon
+  const out = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "hn-cat-"));
+  execFileSync("node", ["build.js"], { cwd: require("node:path").join(__dirname, ".."), env: { ...process.env, BUILD_OUT: out }, stdio: "pipe" });
+  const rd = (f) => require("node:fs").readFileSync(require("node:path").join(out, f), "utf8");
+  const part = rd("partenaires.html");
+  assert.ok(part.includes("Partenaire Réel &amp; Cie") && !part.includes("<b>Réel"), "balises retirées, « & » échappé à l'affichage");
+  assert.ok(part.includes("Soutien $&amp; test"), "le « $& » du texte n'est pas interprété par le remplacement");
+  assert.ok(!part.includes("Inactif"), "partenaire inactif absent");
+  const car = rd("carrieres.html");
+  assert.ok(car.includes("Reporter terrain") && car.includes("mailto:recrutement@exemple.test") && car.includes("Second $1 paragraphe"), "offre ouverte avec description et moyen de postuler");
+  assert.ok(!car.includes(">Brouillon<"), "offre en brouillon absente");
+  const foot = rd("index.html");
+  assert.ok(foot.includes('href="https://facebook.com/hnetmedia"') && !foot.includes('class="soc-btn" href="#"'), "réseau renseigné affiché, aucun lien « # »");
+  assert.ok(!foot.includes("aria-label=\"LinkedIn\""), "réseau non renseigné absent");
+  const leg = rd("mentions-legales.html");
+  assert.ok(leg.includes("J. Roosvelt Jean Charles") && leg.includes("Vercel Inc.") && leg.includes("numéro d'immatriculation") && leg.includes("dev-notice"), "mentions : valeurs réelles + avis seulement pour ce qui manque");
+  assert.ok(!leg.includes("directeur de la publication, ") && !/il manque [^<]*hébergeur/.test(leg), "avis ne réclame plus ce qui est renseigné");
+  assert.ok(rd("equipe.html").includes("Marie Éclair"), "fiche d'équipe publiée");
+
+  // suppressions
+  assert.equal((await as(com, "DELETE", `/api/admin/partners/${pid}`)).status, 200);
+  assert.equal((await as(com, "DELETE", `/api/admin/partners/${pid}`)).status, 404);
+  assert.equal((await as(chef, "DELETE", `/api/admin/jobs/${jid}`)).status, 200);
+  await db().query("UPDATE articles SET author_id = NULL WHERE id = $1", [art.id]);
+  assert.equal((await as(chef, "DELETE", `/api/admin/team/${aid}`)).status, 200, "fiche libre : supprimée");
+  assert.ok(hidden && brouillon);
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action IN ('partenaire.creation','offre.creation','equipe.creation','reglages.modification')")).length >= 4, "actions journalisées");
+});

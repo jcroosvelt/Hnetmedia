@@ -49,7 +49,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.waitForSelector(".hn-alert:not([hidden])"); ok(/incorrects/i.test(await page.textContent(".hn-alert")), "mauvais identifiants refusés");
     await page.fill("#l-email", loginEmail); await page.fill("#l-pw", "un mot de passe solide 2026"); await page.click("button[type=submit]");
     await page.waitForSelector(".hn-tabs a"); ok(true, "connexion réussie");
-    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 6, "onglets administrateur : " + tabs.join(", "));
+    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 11, "onglets administrateur : " + tabs.join(", "));
     await page.waitForSelector(".hn-table, .empty-state");
     await page.screenshot({ path: `${SHOTS}/${name}-3-liste.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (liste)");

@@ -20,7 +20,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   }
   console.log("— Contributeur (mobile)");
   let { ctx, page, tabs } = await login("contrib@h.com", devices["Pixel 5"]);
-  ok(tabs.join() === "Articles,Mon compte", "onglets limités : " + tabs.join(", "));
+  ok(tabs.join() === "Articles,Médias,Mon compte", "onglets limités : " + tabs.join(", "));
   await page.waitForSelector(".hn-table, .empty-state");
   ok(!(await page.isVisible("text=Titre de l'article (exemple")), "ne voit pas les articles des autres (ni le brouillon-modèle)");
   await page.click("text=+ Nouvel article"); await page.fill("#dlg-title", "Mon brouillon de contributeur"); await page.click(".hn-dlg button[type=submit]"); await page.waitForSelector(".hn-ed-prose");

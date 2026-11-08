@@ -119,6 +119,12 @@ function init(content) {
   /* ── PARTIELS ── */
   headerHtml = readFile(path.join(PARTIALS_DIR, "header.html"));
   footerHtml = readFile(path.join(PARTIALS_DIR, "footer.html"));
+  // Réseaux sociaux : uniquement ceux renseignés dans /admin › Réglages (aucun lien factice « # »).
+  const SOC = [["twitter", "𝕏", "X (Twitter)"], ["facebook", "f", "Facebook"], ["linkedin", "in", "LinkedIn"], ["youtube", "▶", "YouTube"], ["instagram", "📷", "Instagram"]];
+  const socLinks = SOC.filter(([k]) => settings.social && /^https:\/\//.test(settings.social[k] || ""));
+  footerHtml = footerHtml.replace("<!--SOCIAL-->", () => socLinks.length
+    ? `<div class="ft-social" style="margin-top:18px">${socLinks.map(([k, ico, label]) => `<a class="soc-btn" href="${escAttr(settings.social[k])}" target="_blank" rel="noopener" aria-label="${label}">${ico}</a>`).join("")}</div>`
+    : "");
 
   // Ticker : alimenté par les articles marqués "urgent" ; sinon message neutre honnête.
   const urgentArticles = publishedArticles.filter((a) => a.urgent);
@@ -133,6 +139,7 @@ function init(content) {
     name: settings.siteName,
     url: BASE_URL,
     logo: BASE_URL + "/icon-512.png",
+    ...(socLinks.length ? { sameAs: socLinks.map(([k]) => settings.social[k]) } : {}),
   };
   websiteLd = {
     "@context": "https://schema.org",
@@ -361,6 +368,21 @@ function paginationHtml(slug, page, pages) {
   return `<nav class="pagination" id="catPagination" aria-label="Pagination — page ${page} sur ${pages}">${items.join("")}</nav>`;
 }
 
+/* Liste paginée générique (tags, auteurs) : page 1 = `${base}.html`, suivantes = `${base}/page/N.html`, rel=prev/next. */
+function writePaged(base, arts, { body, title, description, emptyHtml, structuredData }) {
+  const pages = Math.max(1, Math.ceil(arts.length / PER_PAGE));
+  const fileOf = (p) => (p === 1 ? `${base}.html` : `${base}/page/${p}.html`);
+  for (let page = 1; page <= pages; page++) {
+    const slice = arts.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+    const grid = arts.length ? `<div class="news-grid">${slice.map(newsCard).join("")}</div>${paginationHtml(base, page, pages)}` : emptyHtml;
+    const links = [page > 1 ? `<link rel="prev" href="${BASE_URL}/${fileOf(page - 1)}">` : "", page < pages ? `<link rel="next" href="${BASE_URL}/${fileOf(page + 1)}">` : ""].filter(Boolean).join("\n");
+    writeFile(fileOf(page), wrapPage({
+      title: title(page), description: description(page), canonicalPath: `/${fileOf(page)}`, extraHead: links,
+      bodyHtml: body(grid, page), structuredData: structuredData ? structuredData(page) : [],
+    }));
+  }
+}
+
 function buildCategoryPages() {
   categories.forEach((c) => {
     const arts = publishedArticles.filter((a) => a.category === c.slug);
@@ -516,21 +538,20 @@ function buildArticlePages() {
 function buildAuthorPages() {
   authors.forEach((author) => {
     const arts = publishedArticles.filter((a) => a.authorId === author.id);
-    const gridHtml = arts.length
-      ? `<div class="news-grid">${arts.map(newsCard).join("")}</div>`
-      : emptyState("📝", "Aucun article publié pour le moment", "Les articles de cet auteur apparaîtront ici dès leur publication.");
 
     const photo = author.photo
       ? `<img class="author-photo" style="width:96px;height:96px" src="${escAttr(author.photo)}" alt="${escAttr(author.name)}">`
       : `<div class="author-photo ph-placeholder" style="width:96px;height:96px;font-size:32px">${escAttr(author.name.charAt(0))}</div>`;
 
     const social = author.social
-      ? Object.entries(author.social).filter(([, v]) => v).map(([k, v]) => `<a class="soc-btn" href="${escAttr(v)}" rel="noopener">${escAttr(k[0].toUpperCase())}</a>`).join("")
+      ? Object.entries(author.social).filter(([, v]) => v).map(([k, v]) => `<a class="soc-btn" href="${escAttr(v)}" rel="noopener" aria-label="${escAttr(k)}">${escAttr(k[0].toUpperCase())}</a>`).join("")
       : "";
 
-    const body = `
+    writePaged(`auteur/${author.id}`, arts, {
+      emptyHtml: emptyState("📝", "Aucun article publié pour le moment", "Les articles de cet auteur apparaîtront ici dès leur publication."),
+      body: (grid, page) => `
     <main><div class="wrap">
-      <div class="breadcrumb"><a href="/">Accueil</a> / <a href="/equipe.html">Équipe</a> / ${escAttr(author.name)}</div>
+      <div class="breadcrumb"><a href="/">Accueil</a> / <a href="/equipe.html">Équipe</a> / ${page > 1 ? `<a href="/auteur/${author.id}">${escAttr(author.name)}</a> / Page ${page}` : escAttr(author.name)}</div>
       <div class="author-card" style="padding:28px">
         ${photo}
         <div>
@@ -540,17 +561,13 @@ function buildAuthorPages() {
           ${social ? `<div class="ft-social" style="margin-top:10px">${social}</div>` : ""}
         </div>
       </div>
-      <div class="sec-head" style="margin-top:24px"><div class="sec-label">Articles publiés</div><div class="sec-rule"></div></div>
-      ${gridHtml}
-    </div></main>`;
-
-    writeFile(`auteur/${author.id}.html`, wrapPage({
-      title: `${author.name} — ${settings.siteName}`,
-      description: author.bio || `Articles de ${author.name} sur ${settings.siteName}.`,
-      canonicalPath: `/auteur/${author.id}.html`,
-      bodyHtml: body,
-      structuredData: [{ "@context": "https://schema.org", "@type": "Person", name: author.name, description: author.bio, jobTitle: author.role }],
-    }));
+      <div class="sec-head" style="margin-top:24px"><div class="sec-label">Articles publiés${page > 1 ? ` — page ${page}` : ""}</div><div class="sec-rule"></div></div>
+      ${grid}
+    </div></main>`,
+      title: (page) => `${author.name}${page > 1 ? ` — page ${page}` : ""} — ${settings.siteName}`,
+      description: () => author.bio || `Articles de ${author.name} sur ${settings.siteName}.`,
+      structuredData: () => [{ "@context": "https://schema.org", "@type": "Person", name: author.name, description: author.bio, jobTitle: author.role }],
+    });
   });
 }
 
@@ -563,20 +580,18 @@ function buildTagPages() {
   tagSlugs.forEach((tagName) => {
     const slug = slugify(tagName);
     const arts = publishedArticles.filter((a) => (a.tags || []).includes(tagName));
-    const gridHtml = arts.length ? `<div class="news-grid">${arts.map(newsCard).join("")}</div>` : emptyState("🏷️", "Aucun article pour ce tag", "Revenez bientôt.");
-    const body = `
+    writePaged(`tag/${slug}`, arts, {
+      emptyHtml: emptyState("🏷️", "Aucun article pour ce tag", "Revenez bientôt."),
+      body: (grid, page) => `
     <main><div class="wrap">
-      <div class="breadcrumb"><a href="/">Accueil</a> / Tag / ${escAttr(tagName)}</div>
+      <div class="breadcrumb"><a href="/">Accueil</a> / Tag / ${page > 1 ? `<a href="/tag/${slug}">${escAttr(tagName)}</a> / Page ${page}` : escAttr(tagName)}</div>
       <div class="page-banner"><div class="page-banner-icon">🏷️</div><div><div class="page-banner-title">#${escAttr(tagName)}</div><div class="page-banner-desc">${arts.length} article${arts.length > 1 ? "s" : ""}</div></div></div>
-      <div class="sec-head" style="margin-top:32px"><div class="sec-label">Articles tagués « ${escAttr(tagName)} »</div><div class="sec-rule"></div></div>
-      ${gridHtml}
-    </div></main>`;
-    writeFile(`tag/${slug}.html`, wrapPage({
-      title: `#${tagName} — ${settings.siteName}`,
-      description: `Tous les articles de ${settings.siteName} tagués ${tagName}.`,
-      canonicalPath: `/tag/${slug}.html`,
-      bodyHtml: body,
-    }));
+      <div class="sec-head" style="margin-top:32px"><div class="sec-label">Articles tagués « ${escAttr(tagName)} »${page > 1 ? ` — page ${page}` : ""}</div><div class="sec-rule"></div></div>
+      ${grid}
+    </div></main>`,
+      title: (page) => `#${tagName}${page > 1 ? ` — page ${page}` : ""} — ${settings.siteName}`,
+      description: () => `Tous les articles de ${settings.siteName} tagués ${tagName}.`,
+    });
   });
 }
 
@@ -607,19 +622,44 @@ function injectDynamicBlocks(html, filename) {
             <strong>${escAttr(a.name)}</strong><span>${escAttr(a.role || "")}</span>
           </a>`).join("")}</div>`
       : emptyState("👥", "Fiches de l'équipe à venir", "Les profils des journalistes s'afficheront ici dès qu'ils seront ajoutés.");
-    html = html.replace('<div id="teamList"><!--TEAM--></div>', `<div id="teamList">${teamHtml}</div>`);
+    html = html.replace('<div id="teamList"><!--TEAM--></div>', () => `<div id="teamList">${teamHtml}</div>`);
   }
   if (filename === "contact.html") {
     const cats = (settings.contactCategories && settings.contactCategories.length ? settings.contactCategories : ["Autre"]);
     html = html.replace("<!--CONTACT_CATEGORIES-->", cats.map((c) => `<option>${escAttr(c)}</option>`).join("\n        "));
   }
+  if (filename === "mentions-legales.html") {
+    const L = settings.legal || {};
+    const e = (x) => escAttr(x);
+    const pub = [`${e(L.publisherName || "HNet Media")} — Média d'information en ligne.`];
+    if (L.publisherAddress) pub.push(`Adresse : ${e(L.publisherAddress)}.`);
+    if (L.registration) pub.push(`Immatriculation : ${e(L.registration)}.`);
+    pub.push(L.director ? `Directeur de la publication : ${e(L.director)}.` : "Directeur de la publication : [à renseigner].");
+    pub.push("Contact : redaction@hnetmedia.com.");
+    const host = L.hostName ? `${e(L.hostName)}${L.hostAddress ? `, ${e(L.hostAddress)}` : ""}.` : "[Nom et adresse de l'hébergeur à renseigner].";
+    const missing = [!L.director && "directeur de la publication", !L.hostName && "hébergeur", !L.registration && "numéro d'immatriculation"].filter(Boolean);
+    const notice = missing.length ? `<div class="dev-notice">⚠️ Mentions légales incomplètes : il manque ${missing.join(", ")}. Ces informations doivent être complétées par l'éditeur avant toute mise en ligne publique.</div>` : "";
+    html = html.replace("<!--LEGAL_NOTICE-->", () => notice).replace("<!--LEGAL_PUBLISHER-->", () => pub.join(" ")).replace("<!--LEGAL_HOST-->", () => host);
+  }
   if (filename === "partenaires.html" && settings.partners && settings.partners.length) {
-    const partnersHtml = `<div class="static-grid">${settings.partners.map((p) => `<a class="static-card" href="${escAttr(p.link)}" target="_blank" rel="noopener"><strong>${escAttr(p.name)}</strong><span>${escAttr(p.description || "")}</span></a>`).join("")}</div>`;
-    html = html.replace(/<div id="partnersList">[\s\S]*?<\/div>\s*<\/div>/, `<div id="partnersList">${partnersHtml}</div></div>`);
+    const partnersHtml = `<div class="static-grid">${settings.partners.map((p) => {
+      const inner = `<strong>${escAttr(p.name)}</strong><span>${escAttr(p.description || "")}</span>`;
+      return /^https?:\/\//.test(p.link || "")
+        ? `<a class="static-card" href="${escAttr(p.link)}" target="_blank" rel="noopener">${inner}</a>`
+        : `<div class="static-card">${inner}</div>`;
+    }).join("")}</div>`;
+    html = html.replace(/<div id="partnersList">[\s\S]*?<\/div>\s*<\/div>/, () => `<div id="partnersList">${partnersHtml}</div></div>`);
   }
   if (filename === "carrieres.html" && settings.jobs && settings.jobs.length) {
-    const jobsHtml = `<div class="static-grid">${settings.jobs.map((j) => `<div class="static-card"><strong>${escAttr(j.title)}</strong><span>${escAttr(j.contractType)} · ${escAttr(j.location)}</span></div>`).join("")}</div>`;
-    html = html.replace(/<div id="jobsList">[\s\S]*?<\/div>\s*<\/div>/, `<div id="jobsList">${jobsHtml}</div></div>`);
+    const jobsHtml = `<div class="static-grid">${settings.jobs.map((j) => {
+      const meta = [j.contractType, j.location].filter(Boolean).map(escAttr).join(" · ");
+      const desc = escAttr(j.description || "").replace(/\n/g, "<br>");
+      const how = /^https:\/\//.test(j.applyUrl || "")
+        ? `<a href="${escAttr(j.applyUrl)}" target="_blank" rel="noopener" style="color:var(--orange);font-weight:600">Postuler</a>`
+        : (j.applyEmail ? `<a href="mailto:${escAttr(j.applyEmail)}" style="color:var(--orange);font-weight:600">Postuler : ${escAttr(j.applyEmail)}</a>` : "");
+      return `<div class="static-card"><strong>${escAttr(j.title)}</strong>${meta ? `<span>${meta}</span>` : ""}<span>${desc}</span>${how ? `<span>${how}</span>` : ""}</div>`;
+    }).join("")}</div>`;
+    html = html.replace(/<div id="jobsList">[\s\S]*?<\/div>\s*<\/div>/, () => `<div id="jobsList">${jobsHtml}</div></div>`);
   }
   return html;
 }
@@ -680,6 +720,14 @@ function buildSitemap() {
     ...categories.flatMap((c) => {
       const n = Math.ceil(publishedArticles.filter((a) => a.category === c.slug).length / PER_PAGE);
       return Array.from({ length: Math.max(0, n - 1) }, (_, i) => ({ loc: `/${c.slug}/page/${i + 2}.html`, priority: "0.5", freq: "hourly" }));
+    }),
+    ...authors.flatMap((au) => {
+      const n = Math.ceil(publishedArticles.filter((a) => a.authorId === au.id).length / PER_PAGE);
+      return Array.from({ length: Math.max(0, n - 1) }, (_, i) => ({ loc: `/auteur/${au.id}/page/${i + 2}.html`, priority: "0.3", freq: "weekly" }));
+    }),
+    ...[...new Set(publishedArticles.flatMap((a) => a.tags || []))].flatMap((tg) => {
+      const n = Math.ceil(publishedArticles.filter((a) => (a.tags || []).includes(tg)).length / PER_PAGE);
+      return Array.from({ length: Math.max(0, n - 1) }, (_, i) => ({ loc: `/tag/${slugify(tg)}/page/${i + 2}.html`, priority: "0.3", freq: "weekly" }));
     }),
     { loc: "/recherche.html", priority: "0.3", freq: "weekly" },
     ...Object.keys(STATIC_PAGES).filter((f) => f !== "recherche.html").map((f) => ({ loc: `/${f}`, priority: "0.4", freq: "monthly" })),

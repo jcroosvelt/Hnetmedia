@@ -54,6 +54,7 @@ async function loadContent() {
     }
   }
   settings.social = settings.social || {};
+  settings.legal = settings.legal || {};
   settings.newsletterStats = settings.newsletterStats || null;
   settings.contactCategories = settings.contactCategories || [];
   settings.partners = partners;

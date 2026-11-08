@@ -27,7 +27,7 @@
 .hn-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
 .hn-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px}
 .hn-form label{display:block;font-size:12px;font-weight:700;color:var(--navy);margin:14px 0 6px}
-.hn-form input[type=text],.hn-form input[type=email],.hn-form input[type=password],.hn-form input[type=url],.hn-form input[type=datetime-local],.hn-form input[type=number],.hn-form select,.hn-form textarea{width:100%;font-family:'Inter',sans-serif;font-size:14px;padding:11px 12px;border:1px solid var(--gray-lt);border-radius:var(--r-sm);background:var(--white);color:var(--ink);min-height:44px}
+.hn-form input[type=text],.hn-form input[type=email],.hn-form input[type=password],.hn-form input[type=url],.hn-form input[type=datetime-local],.hn-form input[type=date],.hn-form input[type=number],.hn-form select,.hn-form textarea{width:100%;font-family:'Inter',sans-serif;font-size:14px;padding:11px 12px;border:1px solid var(--gray-lt);border-radius:var(--r-sm);background:var(--white);color:var(--ink);min-height:44px}
 .hn-form textarea{min-height:90px;resize:vertical;line-height:1.6}
 .hn-form input:focus,.hn-form select:focus,.hn-form textarea:focus,.hn-ed-prose:focus{outline:2px solid var(--orange);outline-offset:0;border-color:var(--orange)}
 .hn-hint{font-size:11.5px;color:var(--gray-md);margin-top:5px;line-height:1.5}

@@ -252,6 +252,11 @@
     if (can("contact.read")) t.push(["#/messages", "Messages"]);
     if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés"]);
     if (can("stats.read")) t.push(["#/stats", "Statistiques"]);
+    if (can("media.upload")) t.push(["#/medias", "Médias"]);
+    if (can("author.manage")) t.push(["#/equipe", "Équipe"]);
+    if (can("partner.manage")) t.push(["#/partenaires", "Partenaires"]);
+    if (can("job.manage")) t.push(["#/offres", "Offres d'emploi"]);
+    if (can("settings.manage")) t.push(["#/reglages", "Réglages"]);
     if (can("user.manage")) t.push(["#/comptes", "Comptes"]);
     t.push(["#/compte", "Mon compte"]);
     return t;
@@ -302,6 +307,11 @@
     else if (parts[0] === "messages") run = function () { return renderMessages(view); };
     else if (parts[0] === "abonnes") run = function () { return renderSubscribers(view); };
     else if (parts[0] === "stats") run = function () { return renderStats(view); };
+    else if (parts[0] === "medias" && can("media.upload")) run = function () { return renderMedia(view); };
+    else if (parts[0] === "equipe" && can("author.manage")) run = function () { return renderTeam(view); };
+    else if (parts[0] === "partenaires" && can("partner.manage")) run = function () { return renderPartners(view); };
+    else if (parts[0] === "offres" && can("job.manage")) run = function () { return renderJobs(view); };
+    else if (parts[0] === "reglages" && can("settings.manage")) run = function () { return renderSettings(view); };
     else if (parts[0] === "comptes") run = function () { return renderUsers(view); };
     else if (parts[0] === "compte") run = function () { return renderAccount(view); };
     else { location.hash = tabsFor()[0][0]; return; }
@@ -1130,6 +1140,209 @@
       view.appendChild(h("div", { class: "hn-card" }, h("h2", { text: "Droits par rôle" }), h("ul", { style: "list-style:none;font-size:13px;line-height:1.8" }, S.meta.roles.map(function (r) { return h("li", null, h("strong", { text: r.label + " : " }), r.description); }))));
       view.appendChild(box);
       return load();
+    });
+  }
+
+  /* ───────── Listes simples (équipe, partenaires, offres) ───────── */
+  // cfg : { title, sub, path, newLabel, empty, cols:[[titre, fn(item)]], fields(item)→champs, body(valeurs, item)→JSON,
+  //         extra(item, reload)→boutons, removeMsg(item) }
+  function renderList(view, cfg) {
+    var box = h("div");
+    function load() {
+      return api("GET", cfg.path).then(function (r) {
+        clear(box);
+        if (!r.items.length) { box.appendChild(h("div", { class: "hn-card" }, h("p", { class: "hn-muted", text: cfg.empty }))); return; }
+        box.appendChild(h("table", { class: "hn-table stack" },
+          h("thead", null, h("tr", null, cfg.cols.map(function (c) { return h("th", { text: c[0] }); }).concat([h("th", { text: "" })]))),
+          h("tbody", null, r.items.map(function (it) {
+            var acts = h("td", { style: "white-space:nowrap" },
+              h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Modifier", onclick: function () { edit(it); } }), " ");
+            (cfg.extra ? cfg.extra(it, load) : []).forEach(function (b) { acts.appendChild(b); acts.appendChild(document.createTextNode(" ")); });
+            acts.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Supprimer", onclick: function () { remove(it); } }));
+            return h("tr", null, cfg.cols.map(function (c) { return h("td", { "data-l": c[0], text: String(c[1](it) == null ? "" : c[1](it)) }); }).concat([acts]));
+          }))));
+      });
+    }
+    function edit(it) {
+      ask(it ? "Modifier" : cfg.newLabel.replace(/^\+ /, ""), cfg.fields(it), { submit: "Enregistrer", intro: cfg.intro }).then(function (v) {
+        if (!v) return;
+        var body = cfg.body(v, it);
+        api(it ? "PUT" : "POST", cfg.path + (it ? "/" + it.id : ""), body)
+          .then(function () { toast("Enregistré."); load(); })
+          .catch(function (x) { toast(x.message, true); });
+      });
+    }
+    function remove(it) {
+      confirmBox(cfg.removeMsg(it), { title: "Supprimer", danger: true, confirm: "Supprimer" }).then(function (ok) {
+        if (!ok) return;
+        api("DELETE", cfg.path + "/" + it.id).then(function () { toast("Supprimé."); load(); }).catch(function (x) { toast(x.message, true); });
+      });
+    }
+    clear(view);
+    view.appendChild(heading(cfg.title, cfg.sub, h("button", { type: "button", class: "hn-btn hn-btn-primary", text: cfg.newLabel, onclick: function () { edit(null); } })));
+    view.appendChild(h("div", { class: "update-note", style: "margin-bottom:14px", text: S.meta && S.meta.siteRebuild
+      ? "Chaque changement met le site à jour automatiquement (1 à 2 minutes)."
+      : "La mise à jour automatique du site n'est pas configurée : les changements n'apparaîtront qu'au prochain déploiement." }));
+    view.appendChild(box);
+    return load();
+  }
+  var YESNO = [["1", "Oui"], ["0", "Non"]];
+
+  function renderTeam(view) {
+    var SOC = [["twitter", "X (Twitter)"], ["facebook", "Facebook"], ["linkedin", "LinkedIn"], ["youtube", "YouTube"], ["instagram", "Instagram"]];
+    return ensureMeta().then(function () {
+      return renderList(view, {
+        title: "Équipe", sub: "Les fiches affichées sur la page « Notre équipe » et sous chaque article signé.",
+        path: "team", newLabel: "+ Nouvelle fiche", empty: "Aucune fiche d'équipe pour le moment.",
+        intro: "Seules des informations réelles : rien n'est inventé ni affiché si vous laissez le champ vide.",
+        cols: [["Nom", function (a) { return a.name; }], ["Fonction", function (a) { return a.role || "—"; }], ["Articles", function (a) { return a.articles; }], ["Photo", function (a) { return a.photo ? "Oui" : "Non"; }]],
+        fields: function (a) {
+          return [{ name: "name", label: "Nom", required: true, max: 100, value: a ? a.name : "" },
+            { name: "role", label: "Fonction (ex. Reporter)", max: 120, value: a ? a.role || "" : "" },
+            { name: "bio", label: "Présentation", type: "textarea", max: 1500, value: a ? a.bio || "" : "" }]
+            .concat(SOC.map(function (c) { return { name: c[0], label: "Lien " + c[1] + " (https://…, facultatif)", type: "url", max: 300, value: a && a.social ? a.social[c[0]] || "" : "" }; }));
+        },
+        body: function (v, a) {
+          var social = {}; SOC.forEach(function (c) { if (v[c[0]]) social[c[0]] = v[c[0]]; });
+          return { name: v.name, role: v.role, bio: v.bio, social: social, photo: a ? a.photo || "" : "" };
+        },
+        extra: function (a, reload) {
+          return [h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: a.photo ? "Changer la photo" : "Photo", onclick: function () {
+            pickImage(a.photo ? { src: a.photo, alt: a.name, caption: "", credit: "" } : null, { title: "Photo de " + a.name }).then(function (v) {
+              if (!v) return;
+              api("PUT", "team/" + a.id, { name: a.name, role: a.role, bio: a.bio, social: a.social || {}, photo: v.src })
+                .then(function () { toast("Photo enregistrée."); reload(); }).catch(function (x) { toast(x.message, true); });
+            });
+          } })];
+        },
+        removeMsg: function (a) { return "Supprimer la fiche de " + a.name + " ? Impossible tant que cette personne signe des articles."; },
+      });
+    });
+  }
+
+  function renderPartners(view) {
+    var KINDS = [["partenaire", "Partenaire"], ["annonceur", "Annonceur"], ["institution", "Institution"]];
+    var label = { partenaire: "Partenaire", annonceur: "Annonceur", institution: "Institution" };
+    return ensureMeta().then(function () {
+      return renderList(view, {
+        title: "Partenaires", sub: "Affichés sur la page « Partenaires ». Seuls les partenaires actifs sont publics.",
+        path: "partners", newLabel: "+ Nouveau partenaire", empty: "Aucun partenaire pour le moment.",
+        intro: "N'ajoutez que de vrais partenaires, avec leur accord.",
+        cols: [["Nom", function (p) { return p.name; }], ["Type", function (p) { return label[p.kind] || p.kind; }], ["Visible", function (p) { return p.active ? "Oui" : "Non"; }], ["Site", function (p) { return p.url || "—"; }]],
+        fields: function (p) {
+          return [{ name: "name", label: "Nom", required: true, max: 120, value: p ? p.name : "" },
+            { name: "url", label: "Site web (https://…, facultatif)", type: "url", max: 500, value: p ? p.url || "" : "" },
+            { name: "description", label: "Description (facultatif)", type: "textarea", max: 500, value: p ? p.description || "" : "" },
+            { name: "kind", label: "Type", type: "select", value: p ? p.kind : "partenaire", options: KINDS },
+            { name: "active", label: "Afficher sur le site ?", type: "select", value: !p || p.active ? "1" : "0", options: YESNO },
+            { name: "position", label: "Ordre d'affichage (0 = en premier)", type: "number", min: 0, value: p ? String(p.position) : "0" }];
+        },
+        body: function (v) { return { name: v.name, url: v.url, description: v.description, kind: v.kind, active: v.active === "1", position: v.position }; },
+        removeMsg: function (p) { return "Supprimer le partenaire « " + p.name + " » ?"; },
+      });
+    });
+  }
+
+  function renderJobs(view) {
+    var ST = [["brouillon", "Brouillon (non publié)"], ["ouvert", "Ouvert (publié)"], ["ferme", "Fermé (non publié)"]];
+    var stLabel = { brouillon: "Brouillon", ouvert: "Ouvert", ferme: "Fermé" };
+    return ensureMeta().then(function () {
+      return renderList(view, {
+        title: "Offres d'emploi", sub: "Affichées sur la page « Carrières » seulement lorsqu'elles sont « Ouvertes ».",
+        path: "jobs", newLabel: "+ Nouvelle offre", empty: "Aucune offre pour le moment.",
+        intro: "Pour ouvrir une offre, indiquez comment postuler (e-mail ou lien).",
+        cols: [["Intitulé", function (j) { return j.title; }], ["Statut", function (j) { return stLabel[j.status] || j.status; }], ["Contrat", function (j) { return j.contract || "—"; }], ["Lieu", function (j) { return j.location || "—"; }], ["Date limite", function (j) { return j.closesAt ? new Date(j.closesAt).toLocaleDateString("fr-FR") : "—"; }]],
+        fields: function (j) {
+          return [{ name: "title", label: "Intitulé du poste", required: true, max: 150, value: j ? j.title : "" },
+            { name: "contract", label: "Contrat (ex. CDD, pigiste)", max: 60, value: j ? j.contract || "" : "" },
+            { name: "location", label: "Lieu", max: 100, value: j ? j.location || "" : "" },
+            { name: "description", label: "Description du poste", type: "textarea", required: true, max: 4000, value: j ? j.description || "" : "" },
+            { name: "applyEmail", label: "E-mail de candidature", type: "email", max: 254, value: j ? j.applyEmail || "" : "" },
+            { name: "applyUrl", label: "ou lien de candidature (https://…)", type: "url", max: 500, value: j ? j.applyUrl || "" : "" },
+            { name: "closesAt", label: "Date limite (facultatif)", type: "date", value: j && j.closesAt ? String(j.closesAt).slice(0, 10) : "" },
+            { name: "status", label: "Statut", type: "select", value: j ? j.status : "brouillon", options: ST }];
+        },
+        body: function (v) { return { title: v.title, contract: v.contract, location: v.location, description: v.description, applyEmail: v.applyEmail, applyUrl: v.applyUrl, closesAt: v.closesAt ? v.closesAt + "T23:59:59Z" : "", status: v.status }; },
+        removeMsg: function (j) { return "Supprimer l'offre « " + j.title + " » ?"; },
+      });
+    });
+  }
+
+  /* ───────── Médias ───────── */
+  function renderMedia(view) {
+    var box = h("div");
+    var size = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " Mo" : Math.max(1, Math.round(n / 1024)) + " Ko"; };
+    function load() {
+      return api("GET", "media").then(function (r) {
+        clear(box);
+        if (!r.items.length) { box.appendChild(h("div", { class: "hn-card" }, h("p", { class: "hn-muted", text: "Aucune image pour le moment. Ajoutez-en depuis l'éditeur d'un article." }))); return; }
+        box.appendChild(h("table", { class: "hn-table stack" },
+          h("thead", null, h("tr", null, ["Image", "Taille", "Ajoutée", "Par", "Utilisation", ""].map(function (c) { return h("th", { text: c }); }))),
+          h("tbody", null, r.items.map(function (m) {
+            return h("tr", null,
+              h("td", { "data-l": "Image" }, h("img", { src: m.url, alt: m.alt || "", loading: "lazy", style: "width:72px;height:54px;object-fit:cover;border-radius:6px;display:block" })),
+              h("td", { "data-l": "Taille", text: m.width + " × " + m.height + " · " + size(m.size) }),
+              h("td", { "data-l": "Ajoutée", class: "hn-muted", text: fmt(m.createdAt) }),
+              h("td", { "data-l": "Par", text: m.by || "—" }),
+              h("td", { "data-l": "Utilisation", text: m.usage > 0 ? "Utilisée (" + m.usage + ")" : "Inutilisée" }),
+              h("td", null, h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Supprimer", disabled: m.usage > 0, title: m.usage > 0 ? "Retirez d'abord l'image des contenus où elle apparaît." : "", onclick: function () {
+                confirmBox("Supprimer définitivement cette image ?", { title: "Supprimer l'image", danger: true, confirm: "Supprimer" }).then(function (ok) {
+                  if (!ok) return;
+                  api("DELETE", "media/" + m.id).then(function () { toast("Image supprimée."); load(); }).catch(function (x) { toast(x.message, true); });
+                });
+              } })));
+          }))));
+        box.appendChild(h("p", { class: "hn-hint", text: "Les 60 images les plus récentes. Une image utilisée dans un article, une photo d'équipe ou un partenaire ne peut pas être supprimée." }));
+      });
+    }
+    clear(view);
+    view.appendChild(heading("Médias", "Images téléversées depuis l'éditeur d'articles. Vous ne voyez que les vôtres, sauf droit de gestion de la médiathèque."));
+    view.appendChild(box);
+    return load();
+  }
+
+  /* ───────── Réglages du site (administrateur) ───────── */
+  function renderSettings(view) {
+    var SOC = [["twitter", "X (Twitter)"], ["facebook", "Facebook"], ["linkedin", "LinkedIn"], ["youtube", "YouTube"], ["instagram", "Instagram"]];
+    var LEG = [["publisherName", "Nom de l'éditeur (par défaut : HNet Media)"], ["publisherAddress", "Adresse de l'éditeur"], ["director", "Directeur de la publication"], ["registration", "Numéro d'immatriculation de l'entreprise"], ["hostName", "Nom de l'hébergeur"], ["hostAddress", "Adresse de l'hébergeur"]];
+    return ensureMeta().then(function () { return api("GET", "settings"); }).then(function (r) {
+      var cur = r.settings, F = {};
+      var err = h("div", { class: "hn-alert", hidden: true, role: "alert" });
+      function field(key, label, val, o) {
+        o = o || {};
+        var el = o.area ? h("textarea", { id: "s-" + key, rows: o.rows || 3, maxlength: o.max }) : h("input", { id: "s-" + key, type: o.type || "text", maxlength: o.max, autocomplete: "off" });
+        el.value = val || ""; F[key] = el;
+        return [h("label", { for: "s-" + key, text: label }), el, o.hint ? h("p", { class: "hn-hint", text: o.hint }) : null];
+      }
+      function card(title, hint, rows) {
+        var c = h("div", { class: "hn-card" }, h("h2", { text: title }));
+        if (hint) c.appendChild(h("p", { class: "hn-hint", style: "margin:0 0 6px", text: hint }));
+        rows.forEach(function (x) { x.forEach(function (n) { if (n) c.appendChild(n); }); });
+        return c;
+      }
+      var form = h("form", { class: "hn-form", novalidate: true, style: "max-width:720px" },
+        card("Le site", "Nom, slogan et description utilisés partout (en-têtes, partage, moteurs de recherche).", [
+          field("siteName", "Nom du site", cur.siteName, { max: 80 }), field("tagline", "Slogan", cur.tagline, { max: 120 }),
+          field("description", "Description du site", cur.description, { area: true, max: 300 })]),
+        card("Réseaux sociaux", "Seuls les réseaux renseignés apparaissent dans le pied de page. Laissez vide pour ne rien afficher.",
+          SOC.map(function (c) { return field("soc-" + c[0], c[1] + " (https://…)", cur.social[c[0]], { type: "url", max: 300 }); })),
+        card("Mentions légales", "Informations juridiques réelles de l'éditeur et de l'hébergeur. Tant qu'elles manquent, la page publique affiche un avis « incomplet ».",
+          LEG.map(function (c) { return field("leg-" + c[0], c[1], cur.legal[c[0]], { max: /Address$/.test(c[0]) ? 300 : 200 }); })),
+        card("Formulaire de contact", null, [field("cats", "Types de demande (un par ligne)", (cur.contactCategories || []).join("\n"), { area: true, rows: 6, max: 600, hint: "De 1 à 12 types. Le visiteur choisit l'un d'eux dans le formulaire." })]),
+        err,
+        h("div", { class: "hn-actions" }, h("button", { type: "submit", class: "hn-btn hn-btn-primary", text: "Enregistrer les réglages" })));
+      form.addEventListener("submit", function (e) {
+        e.preventDefault(); err.hidden = true;
+        var social = {}, legal = {};
+        SOC.forEach(function (c) { social[c[0]] = F["soc-" + c[0]].value.trim(); });
+        LEG.forEach(function (c) { legal[c[0]] = F["leg-" + c[0]].value.trim(); });
+        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
+          .then(function () { toast("Réglages enregistrés."); })
+          .catch(function (x) { err.textContent = x.message; err.hidden = false; });
+      });
+      clear(view);
+      view.appendChild(heading("Réglages du site", "Réservé aux administrateurs. Les changements mettent le site à jour" + (S.meta.siteRebuild ? " automatiquement (1 à 2 minutes)." : " au prochain déploiement (mise à jour automatique non configurée).")));
+      view.appendChild(form);
     });
   }
 

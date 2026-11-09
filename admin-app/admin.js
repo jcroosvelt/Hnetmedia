@@ -297,9 +297,9 @@
     var tabs = h("div", { class: "hn-tabs-in", role: "navigation", "aria-label": "Sections" });
     var main = h("main", { class: "hn-main", id: "view" });
     var initial = (S.user.name || "?").trim().charAt(0).toUpperCase();
-    var nav = h("aside", { class: "hn-nav" },
+    var nav = h("aside", { class: "hn-nav" }, h("div", { class: "hn-nav-in" },
       h("a", { class: "hn-brand", href: "#/", "aria-label": "Espace rédaction HNet Media" }, h("img", { src: "/assets/logo.png", alt: "HNet Media" })),
-      h("div", { class: "hn-tabs" }, tabs));
+      h("div", { class: "hn-tabs" }, tabs)));
     var body = h("div", { class: "hn-body" },
       h("div", { class: "hn-bar" }, h("div", { class: "hn-bar-in" },
         h("img", { class: "hn-bar-logo", src: "/assets/logo.png", alt: "HNet Media" }),
@@ -1139,99 +1139,129 @@
     return h("span", { class: "hn-pill " + (pct >= 0 ? "up" : "down") }, h("span", { html: ico(pct >= 0 ? "up" : "down", 12) }), (pct >= 0 ? "+" : "") + pct + " %");
   }
   function emptyNote(text) { return h("p", { class: "hn-muted hn-empty-note", text: text }); }
+  // État vide : lignes en pointillés (aucun chiffre, aucune fausse donnée) + message honnête
+  function ghostRows(text, n) {
+    var rows = []; for (var i = 0; i < (n || 3); i++) rows.push(h("li", null, h("span", { class: "hn-ghost-c" }), h("span", { class: "hn-ghost-l", style: "width:" + (88 - i * 18) + "%" })));
+    return h("div", { class: "hn-ghost" }, h("ul", { "aria-hidden": "true" }, rows), h("p", { class: "hn-muted", text: text }));
+  }
   function vbars(perDay) {
     var max = Math.max.apply(null, [1].concat(perDay.map(function (d) { return d.views; })));
     var total = perDay.reduce(function (a, d) { return a + d.views; }, 0);
-    if (!total) return emptyNote("Aucune lecture mesurée sur cette période. Les lectures d'articles publiés apparaîtront ici.");
-    var peak = perDay.reduce(function (m, d) { return d.views > m.views ? d : m; }, perDay[0]);
     var step = perDay.length > 45 ? 14 : perDay.length > 14 ? 7 : 1;
     var dstr = function (d) { return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }); };
+    var labels = h("div", { class: "hn-vlbl" }, perDay.map(function (d, i) { return h("span", { "data-t": (perDay.length - 1 - i) % step === 0 ? dstr(d.day) : "" }); }));
+    if (!total) {
+      return h("div", null, h("div", { class: "hn-vbars empty", "aria-hidden": "true" }, perDay.map(function (d, i) { return h("div", { class: "vb" }, h("i", { style: "height:" + (38 + (i * 37) % 52) + "%" })); })), labels,
+        h("p", { class: "hn-muted hn-chart-note", text: "Aucune lecture mesurée sur cette période : les lectures d'articles publiés apparaîtront ici." }));
+    }
+    var peak = perDay.reduce(function (m, d) { return d.views > m.views ? d : m; }, perDay[0]);
     return h("div", { role: "img", "aria-label": "Lectures par jour : " + fmtN(total) + " au total, maximum " + fmtN(peak.views) + " le " + dstr(peak.day) },
       h("div", { class: "hn-vbars" }, perDay.map(function (d) {
-        return h("div", { class: "vb" + (d === peak ? " peak" : ""), title: dstr(d.day) + " : " + fmtN(d.views) + " lecture" + (d.views > 1 ? "s" : "") },
-          h("i", { style: "height:" + Math.max(3, Math.round(d.views / max * 100)) + "%" }));
-      })),
-      h("div", { class: "hn-vlbl" }, perDay.map(function (d, i) { return h("span", { "data-t": (perDay.length - 1 - i) % step === 0 ? dstr(d.day) : "" }); })));
+        var pc = Math.max(3, Math.round(d.views / max * 100));
+        return h("div", { class: "vb" + (d === peak ? " peak" : ""), "data-v": d === peak ? fmtN(d.views) : null, style: "--h:" + pc + "%", title: dstr(d.day) + " : " + fmtN(d.views) + " lecture" + (d.views > 1 ? "s" : "") }, h("i"));
+      })), labels);
   }
   function rankList(items, o) {
-    if (!items || !items.length) return emptyNote(o.empty);
+    if (!items || !items.length) return ghostRows(o.empty);
     var max = Math.max.apply(null, items.map(function (x) { return x.views; })) || 1;
     return h("ol", { class: "hn-rank" }, items.map(function (x, i) {
       return h("li", null,
-        h("span", { class: "hn-rk", text: i + 1 }),
+        o.avatar ? h("span", { class: "hn-av", "aria-hidden": "true", text: o.name(x).trim().charAt(0).toUpperCase() }) : h("span", { class: "hn-rk", text: i + 1 }),
         h("div", { class: "hn-rk-main" },
           h("div", { class: "hn-rk-top" }, h("span", { class: "hn-rk-name", text: o.name(x) }), h("strong", { text: fmtN(x.views) })),
           o.meta ? h("small", { class: "hn-muted", text: o.meta(x) }) : null,
           h("div", { class: "hn-prog" }, h("i", { style: "width:" + Math.max(2, Math.round(x.views / max * 100)) + "%" }))));
     }));
   }
-  function card(title, sub, body, link) {
-    return h("section", { class: "hn-card hn-pad" },
-      h("div", { class: "hn-card-head" }, h("div", null, h("h2", { text: title }), sub ? h("p", { class: "hn-sub2", text: sub }) : null), link || null), body);
+  function card(title, sub, body, link, cls) {
+    return h("section", { class: "hn-card hn-pad" + (cls ? " " + cls : "") },
+      h("div", { class: "hn-card-head" }, h("div", null, h("h2", { text: title }), sub ? h("p", { class: "hn-sub2", text: sub }) : null), link || null),
+      h("div", { class: "hn-card-body" }, body));
   }
   function linkBtn(text, href) { return h("a", { class: "hn-more", href: href }, text, h("span", { html: ico("ext", 13) })); }
+  // Carte indicateur : titre, flèche vers le détail, grand chiffre, ligne de contexte
+  function kpiCard(k) {
+    return h("div", { class: "hn-kpi" + (k.dark ? " dark" : "") },
+      h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-lab", text: k.lab }), h("a", { class: "hn-go", href: k.href, "aria-label": "Ouvrir : " + k.lab, html: ico("ext", 15) })),
+      h("strong", { class: "hn-kpi-val", text: fmtN(k.val) }),
+      h("div", { class: "hn-kpi-foot" }, k.extra || h("span", { class: "hn-foot" }, h("span", { class: "hn-foot-ic", html: ico(k.ic, 13) }), k.sub)));
+  }
+  // Demi-anneau : répartition réelle des articles par statut
+  function donut(parts, total) {
+    var R = 80, L = Math.PI * R, off = 0, segs = [];
+    parts.forEach(function (p) {
+      if (!p.n || !total) return;
+      var len = p.n / total * L;
+      segs.push('<path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="' + p.color + '" stroke-width="26" stroke-dasharray="' + len.toFixed(2) + " " + (L + 1).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '"/>');
+      off += len;
+    });
+    var pubPct = total ? Math.round(parts[0].n / total * 100) : 0;
+    return h("div", { class: "hn-donut" },
+      h("div", { class: "hn-donut-svg", role: "img", "aria-label": total ? pubPct + " % des articles sont publiés" : "Aucun article pour le moment" },
+        h("span", { html: '<svg viewBox="0 0 200 108" width="100%" aria-hidden="true"><path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#E5E7EB" stroke-width="26"/>' + segs.join("") + "</svg>" }),
+        h("div", { class: "hn-donut-c" }, h("strong", { text: total ? pubPct + " %" : "—" }), h("small", { text: total ? "publiés" : "aucun article" }))),
+      h("ul", { class: "hn-legend" }, parts.map(function (p) { return h("li", null, h("i", { style: "background:" + p.color }), p.label + " ", h("strong", { text: fmtN(p.n) })); })));
+  }
   var artName = function (x) { return x.title || x.slug; };
 
   function renderDashboard(view) {
     return ensureMeta().then(function () { return api("GET", "stats/overview?days=30"); }).then(function (o) {
       var pub = o.articles.publie || 0, dra = o.articles.brouillon || 0, prog = o.articles.programme || 0, arc = o.articles.archive || 0;
       var total = pub + dra + prog + arc;
-      var catLabelOf = function (slug) { return catLabel(slug); };
-      var today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-      var first = (S.user.name || "").split(" ")[0];
-      var chips = [["Pages vues · 30 jours", fmtN(o.views.cur)], ["Articles publiés", fmtN(pub)], ["Programmés", fmtN(prog)]];
-      if (o.messagesNew !== undefined) chips.splice(2, 0, ["Messages à lire", fmtN(o.messagesNew)]);
+      var newBtn = can("article.create") ? h("button", { type: "button", class: "hn-btn hn-btn-navy", text: "+ Nouvel article", onclick: function () { S.openNew = true; location.hash = "#/articles"; } }) : null;
       clear(view);
-      view.appendChild(h("section", { class: "hn-hero" },
-        h("div", { class: "hn-hero-top" }, h("div", null, h("h1", { text: "Bonjour, " + first }), h("p", { text: "Voici l'état réel de votre média." })), h("span", { class: "hn-date", text: today })),
-        h("div", { class: "hn-chips" }, chips.map(function (c) { return h("div", { class: "hn-chip" }, h("small", { text: c[0] }), h("strong", { text: c[1] })); }))));
+      view.appendChild(heading("Tableau de bord", "Suivez, publiez et gérez votre média. Chiffres réels, mesurés par le site.",
+        h("div", { class: "hn-head-actions" }, newBtn)));
 
-      var kpis = [
-        { ic: "eye", lab: "Pages vues", sub: "30 derniers jours", val: o.views.cur, extra: delta(o.views.cur, o.views.prev) },
-        { ic: "doc", lab: "Articles publiés", sub: total ? "sur " + fmtN(total) + " article" + (total > 1 ? "s" : "") : "Aucun article", val: pub, pct: total ? pub / total : 0 },
-        { ic: "pen", lab: "Brouillons", sub: "à terminer", val: dra, pct: total ? dra / total : 0 },
+      var vdelta = o.views.prev ? Math.round((o.views.cur - o.views.prev) / o.views.prev * 100) : null;
+      var k = [
+        { dark: true, lab: "Pages vues · 30 jours", val: o.views.cur, href: "#/stats", ic: "eye",
+          extra: h("span", { class: "hn-foot" }, h("span", { class: "hn-foot-ic", html: ico(vdelta === null || vdelta >= 0 ? "up" : "down", 13) }),
+            vdelta === null ? (o.views.cur ? "Première période mesurée" : "Pas encore de données") : (vdelta >= 0 ? "+" : "") + vdelta + " % sur la période précédente") },
+        { lab: "Articles publiés", val: pub, href: "#/articles", ic: "doc", sub: total ? "sur " + fmtN(total) + " article" + (total > 1 ? "s" : "") : "Aucun article" },
+        { lab: "Brouillons", val: dra, href: "#/articles", ic: "pen", sub: "à terminer" },
       ];
-      if (o.subscribers !== undefined) kpis.push({ ic: "users", lab: "Abonnés confirmés", sub: "newsletter", val: o.subscribers });
-      else kpis.push({ ic: "clock", lab: "Programmés", sub: o.nextScheduled ? "prochain : " + fmt(o.nextScheduled) : "aucun à venir", val: prog });
-      view.appendChild(h("div", { class: "hn-kpis" }, kpis.map(function (k) {
-        return h("div", { class: "hn-kpi" },
-          h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico(k.ic, 20) }), k.extra || null),
-          h("strong", { class: "hn-kpi-val", text: fmtN(k.val) }), h("span", { class: "hn-kpi-lab", text: k.lab }), h("small", { class: "hn-muted", text: k.sub }),
-          k.pct !== undefined ? h("div", { class: "hn-prog thick" }, h("i", { style: "width:" + Math.round(k.pct * 100) + "%" })) : null);
-      })));
+      if (o.messagesNew !== undefined) k.push({ lab: "Messages à lire", val: o.messagesNew, href: "#/messages", ic: "mail", sub: "formulaire de contact" });
+      else k.push({ lab: "Programmés", val: prog, href: "#/articles", ic: "clock", sub: "en attente de publication" });
+      view.appendChild(h("div", { class: "hn-kpis" }, k.map(kpiCard)));
 
-      var actBody = !o.activity ? null : (o.activity.length ? h("ul", { class: "hn-act" }, o.activity.map(function (a) {
+      // Prochaine publication
+      var nx = o.nextScheduled ? new Date(o.nextScheduled) : null;
+      var remind = nx
+        ? h("div", { class: "hn-remind" }, h("small", { class: "hn-muted", text: "Programmée pour le" }),
+            h("strong", { text: nx.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) }),
+            h("span", { class: "hn-muted", text: "à " + nx.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + (prog > 1 ? " · " + prog + " articles programmés" : "") }),
+            h("a", { class: "hn-btn hn-btn-navy", href: "#/articles", text: "Voir les articles" }))
+        : h("div", { class: "hn-remind" }, h("span", { class: "hn-remind-ic", html: ico("clock", 26) }), h("strong", { text: "Aucune publication programmée" }),
+            h("span", { class: "hn-muted", text: "Programmez un article depuis l'éditeur pour qu'il paraisse à l'heure choisie." }),
+            h("a", { class: "hn-btn hn-btn-navy", href: "#/articles", text: "Voir les articles" }));
+      var todo = [];
+      if (o.messagesNew !== undefined) todo.push(["mail", "Messages à lire", o.messagesNew, "#/messages"]);
+      todo.push(["pen", "Brouillons", dra, "#/articles"], ["clock", "Programmés", prog, "#/articles"]);
+      if (o.jobsOpen !== undefined) todo.push(["case", "Offres ouvertes", o.jobsOpen, "#/offres"]);
+      var todoList = h("ul", { class: "hn-rows" }, todo.map(function (t) {
+        return h("li", null, h("a", { href: t[3] }, h("span", { class: "hn-row-ic", html: ico(t[0], 18) }), h("span", { class: "hn-row-t", text: t[1] }), h("strong", { class: t[2] > 0 ? "on" : "", text: fmtN(t[2]) })));
+      }));
+      view.appendChild(h("div", { class: "hn-bento b1" },
+        card("Lectures par jour", "30 derniers jours", vbars(o.perDay), linkBtn("Détails", "#/stats")),
+        card("Prochaine publication", null, remind),
+        card("À traiter", "Ce qui attend votre action", todoList)));
+
+      var artMeta = function (x) { return catLabel(x.category); };
+      view.appendChild(h("div", { class: "hn-bento b2" },
+        card("Articles les plus lus", "30 derniers jours", rankList(o.topArticles.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: artName, meta: artMeta }), linkBtn("Tout voir", "#/stats")),
+        card("Rédacteurs les plus lus", "Lectures cumulées de leurs articles", rankList(o.topAuthors.slice(0, 5), { avatar: true, empty: "Pas encore de lectures mesurées.", name: function (x) { return x.name; }, meta: function (x) { return x.articles + " article" + (x.articles > 1 ? "s" : "") + " lu" + (x.articles > 1 ? "s" : ""); } }), linkBtn("Tout voir", "#/stats")),
+        card("Répartition des articles", "Par statut", donut([
+          { label: "Publiés", n: pub, color: "#0A1F44" }, { label: "Brouillons", n: dra, color: "#FF6B00" },
+          { label: "Programmés", n: prog, color: "#00C8F0" }, { label: "Archivés", n: arc, color: "#9CA3AF" }], total))));
+
+      var actBody = !o.activity ? null : (o.activity.length ? h("ul", { class: "hn-act" }, o.activity.slice(0, 5).map(function (a) {
         return h("li", null, h("span", { class: "hn-dot", "aria-hidden": "true" }), h("div", null, h("span", null, h("strong", { text: a.who || "Système" }), " " + actionLabel(a.action)), h("small", { class: "hn-muted", text: ago(a.at) })));
       })) : emptyNote("Aucune activité récente."));
-      view.appendChild(h("div", { class: "hn-cols hn-cols-21" },
-        card("Lectures par jour", "30 derniers jours", vbars(o.perDay), linkBtn("Statistiques détaillées", "#/stats")),
-        actBody ? card("Activité récente", "Dernières modifications de l'équipe", actBody) : card("Votre espace", "Ce que vous pouvez faire ici",
-          emptyNote("Écrivez et suivez vos articles depuis l'onglet « Articles »."))));
-
-      view.appendChild(h("div", { class: "hn-cols" },
-        card("Articles les plus lus", "30 derniers jours", rankList(o.topArticles.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: artName, meta: function (x) { return catLabelOf(x.category); } }), linkBtn("Tout voir", "#/stats")),
-        card("Rédacteurs les plus lus", "Lectures cumulées de leurs articles", rankList(o.topAuthors.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return x.name; }, meta: function (x) { return x.articles + " article" + (x.articles > 1 ? "s" : "") + " lu" + (x.articles > 1 ? "s" : ""); } }), linkBtn("Tout voir", "#/stats"))));
-
-      var qa = [];
-      if (can("article.create")) qa.push(["navy", "pen", "Nouvel article", "Écrire un brouillon", function () { S.openNew = true; location.hash = "#/articles"; }]);
-      if (can("media.upload")) qa.push(["orange", "image", "Médias", "Images du site", function () { location.hash = "#/medias"; }]);
-      if (can("settings.manage")) qa.push(["navy-lt", "gear", "Réglages", "Nom, réseaux, mentions", function () { location.hash = "#/reglages"; }]);
-      if (can("author.manage")) qa.push(["cyan", "person", "Équipe", "Fiches des rédacteurs", function () { location.hash = "#/equipe"; }]);
-      var todo = [];
-      if (o.messagesNew !== undefined) todo.push(["Messages à lire", o.messagesNew, "Nouveaux messages du formulaire de contact.", "Ouvrir les messages", "#/messages"]);
-      todo.push(["Articles programmés", prog, prog ? "Prochain : " + fmt(o.nextScheduled) : "Aucun article en attente de publication.", "Voir les articles", "#/articles"]);
-      todo.push(["Brouillons", dra, "Articles commencés, pas encore publiés.", "Voir les articles", "#/articles"]);
-      if (o.jobsOpen !== undefined) todo.push(["Offres ouvertes", o.jobsOpen, "Offres affichées sur la page Carrières.", "Gérer les offres", "#/offres"]);
-      view.appendChild(h("div", { class: "hn-cols" },
-        card("Actions rapides", "Raccourcis fréquents", h("div", { class: "hn-qa" }, qa.map(function (q) {
-          return h("button", { type: "button", class: "hn-qa-tile " + q[0], onclick: q[4] }, h("span", { html: ico(q[1], 22) }), h("strong", { text: q[2] }), h("small", { text: q[3] }));
-        }))),
-        card("Rubriques les plus lues", "30 derniers jours", rankList(o.topCategories.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return x.label; } }))));
-      view.appendChild(card("À traiter", "Ce qui demande votre attention", h("div", { class: "hn-todo" }, todo.map(function (t) {
-        return h("div", { class: "hn-todo-card" + (t[1] > 0 ? " on" : "") },
-          h("span", { class: "hn-todo-n", text: fmtN(t[1]) }), h("strong", { text: t[0] }), h("p", { text: t[2] }),
-          h("a", { class: "hn-btn hn-btn-navy hn-btn-sm", href: t[4], text: t[3] }));
-      }))));
+      view.appendChild(h("div", { class: "hn-bento b3" },
+        card("Rubriques les plus lues", "30 derniers jours", rankList(o.topCategories.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return x.label; } })),
+        actBody ? card("Activité récente", "Dernières modifications de l'équipe", actBody, null, "dark")
+                : card("Mots-clés les plus lus", "30 derniers jours", rankList(o.topTags.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return "#" + x.label; } }))));
     });
   }
 
@@ -1243,13 +1273,11 @@
       return ensureMeta().then(function () { return api("GET", "stats/overview?days=" + days.value); }).then(function (o) {
         clear(box);
         var lab = days.value + " derniers jours";
-        box.appendChild(h("div", { class: "hn-kpis three" },
-          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("eye", 20) }), delta(o.views.cur, o.views.prev)),
-            h("strong", { class: "hn-kpi-val", text: fmtN(o.views.cur) }), h("span", { class: "hn-kpi-lab", text: "Pages vues" }), h("small", { class: "hn-muted", text: lab + " · avant : " + fmtN(o.views.prev) })),
-          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("chart", 20) })),
-            h("strong", { class: "hn-kpi-val", text: fmtN(Math.round(o.views.cur / o.days)) }), h("span", { class: "hn-kpi-lab", text: "Moyenne par jour" }), h("small", { class: "hn-muted", text: lab })),
-          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("doc", 20) })),
-            h("strong", { class: "hn-kpi-val", text: fmtN(o.articles.publie || 0) }), h("span", { class: "hn-kpi-lab", text: "Articles publiés" }), h("small", { class: "hn-muted", text: o.scope === "own" ? "parmi vos articles" : "au total" }))));
+        var vd = o.views.prev ? Math.round((o.views.cur - o.views.prev) / o.views.prev * 100) : null;
+        box.appendChild(h("div", { class: "hn-kpis three" }, [
+          { dark: true, lab: "Pages vues", val: o.views.cur, href: "#/stats", ic: "eye", extra: h("span", { class: "hn-foot" }, h("span", { class: "hn-foot-ic", html: ico(vd === null || vd >= 0 ? "up" : "down", 13) }), vd === null ? lab : (vd >= 0 ? "+" : "") + vd + " % · avant : " + fmtN(o.views.prev)) },
+          { lab: "Moyenne par jour", val: Math.round(o.views.cur / o.days), href: "#/stats", ic: "chart", sub: lab },
+          { lab: "Articles publiés", val: o.articles.publie || 0, href: "#/articles", ic: "doc", sub: o.scope === "own" ? "parmi vos articles" : "au total" }].map(kpiCard)));
         box.appendChild(card("Lectures par jour", lab, vbars(o.perDay)));
         var empty = "Pas encore de lectures mesurées sur cette période.";
         box.appendChild(h("div", { class: "hn-cols" },

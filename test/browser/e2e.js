@@ -51,8 +51,8 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.waitForSelector(".hn-tabs a"); ok(true, "connexion réussie");
     const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 12 && tabs[0] === "Tableau de bord", "onglets administrateur : " + tabs.join(", "));
     // le tableau de bord est la page d'accueil : chiffres réels, aucune donnée inventée
-    await page.waitForSelector(".hn-hero"); ok(/Bonjour/.test(await page.textContent(".hn-hero h1")) && (await page.locator(".hn-kpi").count()) === 4, "tableau de bord : accueil, 4 indicateurs");
-    ok((await page.textContent(".hn-rank, .hn-empty-note")).length > 0 && (await page.locator(".hn-qa-tile").count()) >= 3, "tableau de bord : classements (ou état vide honnête) et actions rapides");
+    await page.waitForSelector(".hn-kpi"); ok(/Tableau de bord/.test(await page.textContent(".hn-h1")) && (await page.locator(".hn-kpi").count()) === 4 && (await page.locator(".hn-kpi.dark").count()) === 1, "tableau de bord : titre, 4 indicateurs (le premier en avant)");
+    ok((await page.locator(".hn-donut").count()) === 1 && (await page.locator(".hn-rank, .hn-ghost").count()) >= 3, "tableau de bord : classements (ou état vide honnête), répartition des articles");
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (tableau de bord)");
     await page.screenshot({ path: `${SHOTS}/${name}-2b-tableau.png`, fullPage: true });
     await page.click('.hn-tabs a:has-text("Articles")');

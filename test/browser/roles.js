@@ -15,6 +15,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   const browser = await chromium.launch();
   async function login(email, ctxOpts) {
     const ctx = await browser.newContext({ ...ctxOpts, baseURL: base }); const page = await ctx.newPage();
+    page.on("dialog", (d) => d.accept().catch(() => {})); // « quitter la page ? » : réponse explicite (évite une course dans Playwright)
     await page.goto("/admin"); await page.fill("#l-email", email); await page.fill("#l-pw", pw); await page.click("button[type=submit]"); await page.waitForSelector(".hn-tabs a");
     return { ctx, page, tabs: await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)) };
   }
@@ -42,6 +43,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   console.log("— Commercial (ordinateur)");
   ({ ctx, page, tabs } = await login("commercial@h.com", { viewport: { width: 1280, height: 900 } }));
   ok(tabs.includes("Messages") && !tabs.includes("Comptes"), "onglets : " + tabs.join(", "));
+  await page.click('.hn-tabs a:has-text("Articles")');
   await page.waitForSelector(".hn-table, .empty-state");
   const link = page.locator(".hn-table a.hn-link").filter({ hasText: "calendrier" }).first(); await link.click(); await page.waitForSelector("#a-title");
   ok(await page.isDisabled("#a-title"), "contenu éditorial en lecture seule");
@@ -49,6 +51,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   await ctx.close();
   console.log("— Rédacteur en chef (mobile) : publié → correction");
   ({ ctx, page, tabs } = await login("chef@h.com", devices["Pixel 5"]));
+  await page.click('.hn-tabs a:has-text("Articles")');
   await page.waitForSelector(".hn-table"); await page.locator(".hn-table a.hn-link").filter({ hasText: "calendrier" }).first().click(); await page.waitForSelector("#a-title");
   await page.click(".wd-publish"); ok(await page.isVisible('.wd-menuitem:has-text("Dépublier")') && await page.isVisible('.wd-menuitem:has-text("Archiver")'), "peut dépublier et archiver"); await page.keyboard.press("Escape");
   ok(!(await page.isVisible("text=Supprimer définitivement")), "ne peut pas supprimer (administrateur seulement)");

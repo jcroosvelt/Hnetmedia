@@ -49,7 +49,13 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.waitForSelector(".hn-alert:not([hidden])"); ok(/incorrects/i.test(await page.textContent(".hn-alert")), "mauvais identifiants refusés");
     await page.fill("#l-email", loginEmail); await page.fill("#l-pw", "un mot de passe solide 2026"); await page.click("button[type=submit]");
     await page.waitForSelector(".hn-tabs a"); ok(true, "connexion réussie");
-    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 11, "onglets administrateur : " + tabs.join(", "));
+    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 12 && tabs[0] === "Tableau de bord", "onglets administrateur : " + tabs.join(", "));
+    // le tableau de bord est la page d'accueil : chiffres réels, aucune donnée inventée
+    await page.waitForSelector(".hn-hero"); ok(/Bonjour/.test(await page.textContent(".hn-hero h1")) && (await page.locator(".hn-kpi").count()) === 4, "tableau de bord : accueil, 4 indicateurs");
+    ok((await page.textContent(".hn-rank, .hn-empty-note")).length > 0 && (await page.locator(".hn-qa-tile").count()) >= 3, "tableau de bord : classements (ou état vide honnête) et actions rapides");
+    ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (tableau de bord)");
+    await page.screenshot({ path: `${SHOTS}/${name}-2b-tableau.png`, fullPage: true });
+    await page.click('.hn-tabs a:has-text("Articles")');
     await page.waitForSelector(".hn-table, .empty-state");
     await page.screenshot({ path: `${SHOTS}/${name}-3-liste.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "pas de débordement horizontal (liste)");
@@ -184,7 +190,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     ok(await page.isVisible("text=Publier la correction"), "formulaire de correction affiché pour un article publié"); await closePane();
 
     // Messages / comptes / stats / compte
-    for (const [hash, sel] of [["#/messages", ".empty-state"], ["#/abonnes", ".hn-card"], ["#/stats", ".empty-state"], ["#/comptes", ".hn-table"], ["#/compte", "#p-cur"]]) {
+    for (const [hash, sel] of [["#/messages", ".empty-state"], ["#/abonnes", ".hn-card"], ["#/stats", ".hn-kpi"], ["#/comptes", ".hn-table"], ["#/compte", "#p-cur"]]) {
       await page.evaluate((h) => { location.hash = h; }, hash); await page.waitForSelector(sel); await page.waitForTimeout(150);
       ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `pas de débordement horizontal (${hash})`);
     }

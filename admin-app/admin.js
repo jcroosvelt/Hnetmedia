@@ -245,20 +245,50 @@
     return api("GET", "meta").then(function (m) { S.meta = m; return m; });
   }
 
+  /* ───────── Icônes (balisage statique, aucune donnée) ───────── */
+  var ICONS = {
+    grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.5 0 4.5 2 4.5 5"/>',
+    chart: '<path d="M4 20h16"/><rect x="5" y="11" width="3" height="9" rx=".8"/><rect x="10.5" y="5" width="3" height="15" rx=".8"/><rect x="16" y="14" width="3" height="6" rx=".8"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
+    person: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
+    star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+    case: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M3 13h18"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
+    key: '<circle cx="8" cy="15" r="3.5"/><path d="M10.5 12.5L20 3M16 7l3 3M14 9l2 2"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    up: '<path d="M6 15l6-6 6 6"/>',
+    down: '<path d="M6 9l6 6 6-6"/>',
+    ext: '<path d="M7 17L17 7M8 7h9v9"/>',
+    pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  };
+  function ico(name, size) {
+    var n = size || 20;
+    return '<svg viewBox="0 0 24 24" width="' + n + '" height="' + n + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (ICONS[name] || "") + "</svg>";
+  }
+  function fmtN(n) { return Number(n || 0).toLocaleString("fr-FR"); }
+
   /* ───────── Coque (barre, onglets, routage) ───────── */
+  // [adresse, libellé, icône, groupe]
   function tabsFor() {
     var t = [];
-    if (can("article.create") || can("article.edit_own") || can("article.edit_any") || can("article.sponsor")) t.push(["#/articles", "Articles"]);
-    if (can("contact.read")) t.push(["#/messages", "Messages"]);
-    if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés"]);
-    if (can("stats.read")) t.push(["#/stats", "Statistiques"]);
-    if (can("media.upload")) t.push(["#/medias", "Médias"]);
-    if (can("author.manage")) t.push(["#/equipe", "Équipe"]);
-    if (can("partner.manage")) t.push(["#/partenaires", "Partenaires"]);
-    if (can("job.manage")) t.push(["#/offres", "Offres d'emploi"]);
-    if (can("settings.manage")) t.push(["#/reglages", "Réglages"]);
-    if (can("user.manage")) t.push(["#/comptes", "Comptes"]);
-    t.push(["#/compte", "Mon compte"]);
+    if (can("stats.read")) t.push(["#/tableau", "Tableau de bord", "grid", ""]);
+    if (can("article.create") || can("article.edit_own") || can("article.edit_any") || can("article.sponsor")) t.push(["#/articles", "Articles", "doc", "Contenu"]);
+    if (can("media.upload")) t.push(["#/medias", "Médias", "image", "Contenu"]);
+    if (can("author.manage")) t.push(["#/equipe", "Équipe", "person", "Contenu"]);
+    if (can("partner.manage")) t.push(["#/partenaires", "Partenaires", "star", "Contenu"]);
+    if (can("job.manage")) t.push(["#/offres", "Offres d'emploi", "case", "Contenu"]);
+    if (can("contact.read")) t.push(["#/messages", "Messages", "mail", "Lecteurs"]);
+    if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés", "users", "Lecteurs"]);
+    if (can("stats.read")) t.push(["#/stats", "Statistiques", "chart", "Lecteurs"]);
+    if (can("settings.manage")) t.push(["#/reglages", "Réglages", "gear", "Administration"]);
+    if (can("user.manage")) t.push(["#/comptes", "Comptes", "users", "Administration"]);
+    t.push(["#/compte", "Mon compte", "key", "Mon espace"]);
     return t;
   }
 
@@ -266,17 +296,30 @@
     clear(app);
     var tabs = h("div", { class: "hn-tabs-in", role: "navigation", "aria-label": "Sections" });
     var main = h("main", { class: "hn-main", id: "view" });
-    app.appendChild(h("div", { class: "hn-bar" }, h("div", { class: "hn-bar-in" },
-      h("img", { src: "/assets/logo.png", alt: "HNet Media" }),
-      h("span", { class: "hn-bar-title", text: "Espace rédaction" }),
-      h("span", { class: "hn-bar-user" }, h("span", { text: S.user.name + " · " + (ROLES[S.user.role] || S.user.role) }),
-        h("button", { type: "button", text: "Déconnexion", onclick: logout })))));
-    app.appendChild(h("div", { class: "hn-tabs" }, tabs));
-    app.appendChild(main);
-    tabsFor().forEach(function (t) { tabs.appendChild(h("a", { href: t[0], "data-h": t[0], text: t[1] })); });
+    var initial = (S.user.name || "?").trim().charAt(0).toUpperCase();
+    var nav = h("aside", { class: "hn-nav" },
+      h("a", { class: "hn-brand", href: "#/", "aria-label": "Espace rédaction HNet Media" }, h("img", { src: "/assets/logo.png", alt: "HNet Media" })),
+      h("div", { class: "hn-tabs" }, tabs));
+    var body = h("div", { class: "hn-body" },
+      h("div", { class: "hn-bar" }, h("div", { class: "hn-bar-in" },
+        h("img", { class: "hn-bar-logo", src: "/assets/logo.png", alt: "HNet Media" }),
+        h("span", { class: "hn-bar-title", text: "Espace rédaction" }),
+        h("a", { class: "hn-site", href: "/", target: "_blank", rel: "noopener" }, h("span", { html: ico("globe", 16) }), h("span", { text: "Voir le site" })),
+        h("span", { class: "hn-bar-user" },
+          h("span", { class: "hn-avatar", "aria-hidden": "true", text: initial }),
+          h("span", { class: "hn-who" }, h("strong", { text: S.user.name }), h("small", { text: ROLES[S.user.role] || S.user.role })),
+          h("button", { type: "button", text: "Déconnexion", onclick: logout })))),
+      main);
+    app.appendChild(h("div", { class: "hn-shell" }, nav, body));
+    var last = null;
+    tabsFor().forEach(function (t) {
+      if (t[3] !== last && t[3]) tabs.appendChild(h("span", { class: "hn-nav-lbl", text: t[3] }));
+      last = t[3];
+      tabs.appendChild(h("a", { href: t[0], "data-h": t[0] }, h("span", { class: "hn-ico", html: ico(t[2], 18) }), h("span", { text: t[1] })));
+    });
     window.removeEventListener("hashchange", route);
     window.addEventListener("hashchange", route);
-    if (!location.hash || location.hash === "#") location.hash = tabsFor()[0][0]; else route();
+    if (!location.hash || location.hash === "#" || location.hash === "#/") location.hash = tabsFor()[0][0]; else route();
   }
 
   function logout() {
@@ -302,11 +345,12 @@
     var first = "#/" + (parts[0] || "");
     Array.prototype.forEach.call(document.querySelectorAll(".hn-tabs a"), function (a) { a.classList.toggle("on", a.getAttribute("data-h") === first); });
     var run;
-    if (parts[0] === "articles" && parts[1]) run = function () { return renderArticle(view, parts[1]); };
+    if (parts[0] === "tableau" && can("stats.read")) run = function () { return renderDashboard(view); };
+    else if (parts[0] === "articles" && parts[1]) run = function () { return renderArticle(view, parts[1]); };
     else if (parts[0] === "articles") run = function () { return renderArticles(view); };
     else if (parts[0] === "messages") run = function () { return renderMessages(view); };
     else if (parts[0] === "abonnes") run = function () { return renderSubscribers(view); };
-    else if (parts[0] === "stats") run = function () { return renderStats(view); };
+    else if (parts[0] === "stats" && can("stats.read")) run = function () { return renderStats(view); };
     else if (parts[0] === "medias" && can("media.upload")) run = function () { return renderMedia(view); };
     else if (parts[0] === "equipe" && can("author.manage")) run = function () { return renderTeam(view); };
     else if (parts[0] === "partenaires" && can("partner.manage")) run = function () { return renderPartners(view); };
@@ -386,6 +430,7 @@
       view.appendChild(heading("Articles", "Brouillons, articles programmés et publiés.", newBtn));
       view.appendChild(h("div", { class: "hn-filters" }, q, status));
       view.appendChild(box);
+      if (S.openNew) { S.openNew = false; if (can("article.create")) setTimeout(createArticle, 0); }
       return load();
     });
   }
@@ -1066,27 +1111,158 @@
   }
 
   /* ───────── Statistiques ───────── */
+  /* ───────── Tableau de bord et statistiques (chiffres réels uniquement) ───────── */
+  var ACTIONS = {
+    "article.creation": "a créé un article", "article.modification": "a modifié un article", "article.suppression": "a supprimé un article",
+    "article.correction": "a ajouté une correction", "article.sponsorise": "a changé le marquage sponsorisé",
+    "media.televersement": "a ajouté une image", "media.suppression": "a supprimé une image",
+    "contact.statut": "a traité un message", "abonnes.export": "a exporté les abonnés",
+    "equipe.creation": "a créé une fiche d'équipe", "equipe.modification": "a modifié une fiche d'équipe", "equipe.suppression": "a supprimé une fiche d'équipe",
+    "partenaire.creation": "a ajouté un partenaire", "partenaire.modification": "a modifié un partenaire", "partenaire.suppression": "a supprimé un partenaire",
+    "offre.creation": "a créé une offre d'emploi", "offre.modification": "a modifié une offre d'emploi", "offre.suppression": "a supprimé une offre d'emploi",
+    "reglages.modification": "a modifié les réglages du site", "installation.admin": "a créé le premier compte administrateur", "mot_de_passe.modifie": "a changé son mot de passe", "compte.creation": "a créé un compte", "compte.modification": "a modifié un compte",
+  };
+  function actionLabel(a) {
+    if (ACTIONS[a]) return ACTIONS[a];
+    if (/^article\.statut\./.test(a)) return /publie_auto/.test(a) ? "— publication programmée effectuée" : "a changé le statut d'un article";
+    return "a effectué une action";
+  }
+  function ago(iso) {
+    var m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (m < 1) return "à l'instant"; if (m < 60) return "il y a " + m + " min";
+    var hh = Math.round(m / 60); if (hh < 24) return "il y a " + hh + " h";
+    var d = Math.round(hh / 24); return "il y a " + d + " j";
+  }
+  function delta(cur, prev) {
+    if (!prev) return h("span", { class: "hn-pill", text: cur ? "1re période mesurée" : "Pas encore de données" });
+    var pct = Math.round((cur - prev) / prev * 100);
+    return h("span", { class: "hn-pill " + (pct >= 0 ? "up" : "down") }, h("span", { html: ico(pct >= 0 ? "up" : "down", 12) }), (pct >= 0 ? "+" : "") + pct + " %");
+  }
+  function emptyNote(text) { return h("p", { class: "hn-muted hn-empty-note", text: text }); }
+  function vbars(perDay) {
+    var max = Math.max.apply(null, [1].concat(perDay.map(function (d) { return d.views; })));
+    var total = perDay.reduce(function (a, d) { return a + d.views; }, 0);
+    if (!total) return emptyNote("Aucune lecture mesurée sur cette période. Les lectures d'articles publiés apparaîtront ici.");
+    var peak = perDay.reduce(function (m, d) { return d.views > m.views ? d : m; }, perDay[0]);
+    var step = perDay.length > 45 ? 14 : perDay.length > 14 ? 7 : 1;
+    var dstr = function (d) { return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }); };
+    return h("div", { role: "img", "aria-label": "Lectures par jour : " + fmtN(total) + " au total, maximum " + fmtN(peak.views) + " le " + dstr(peak.day) },
+      h("div", { class: "hn-vbars" }, perDay.map(function (d) {
+        return h("div", { class: "vb" + (d === peak ? " peak" : ""), title: dstr(d.day) + " : " + fmtN(d.views) + " lecture" + (d.views > 1 ? "s" : "") },
+          h("i", { style: "height:" + Math.max(3, Math.round(d.views / max * 100)) + "%" }));
+      })),
+      h("div", { class: "hn-vlbl" }, perDay.map(function (d, i) { return h("span", { "data-t": (perDay.length - 1 - i) % step === 0 ? dstr(d.day) : "" }); })));
+  }
+  function rankList(items, o) {
+    if (!items || !items.length) return emptyNote(o.empty);
+    var max = Math.max.apply(null, items.map(function (x) { return x.views; })) || 1;
+    return h("ol", { class: "hn-rank" }, items.map(function (x, i) {
+      return h("li", null,
+        h("span", { class: "hn-rk", text: i + 1 }),
+        h("div", { class: "hn-rk-main" },
+          h("div", { class: "hn-rk-top" }, h("span", { class: "hn-rk-name", text: o.name(x) }), h("strong", { text: fmtN(x.views) })),
+          o.meta ? h("small", { class: "hn-muted", text: o.meta(x) }) : null,
+          h("div", { class: "hn-prog" }, h("i", { style: "width:" + Math.max(2, Math.round(x.views / max * 100)) + "%" }))));
+    }));
+  }
+  function card(title, sub, body, link) {
+    return h("section", { class: "hn-card hn-pad" },
+      h("div", { class: "hn-card-head" }, h("div", null, h("h2", { text: title }), sub ? h("p", { class: "hn-sub2", text: sub }) : null), link || null), body);
+  }
+  function linkBtn(text, href) { return h("a", { class: "hn-more", href: href }, text, h("span", { html: ico("ext", 13) })); }
+  var artName = function (x) { return x.title || x.slug; };
+
+  function renderDashboard(view) {
+    return ensureMeta().then(function () { return api("GET", "stats/overview?days=30"); }).then(function (o) {
+      var pub = o.articles.publie || 0, dra = o.articles.brouillon || 0, prog = o.articles.programme || 0, arc = o.articles.archive || 0;
+      var total = pub + dra + prog + arc;
+      var catLabelOf = function (slug) { return catLabel(slug); };
+      var today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      var first = (S.user.name || "").split(" ")[0];
+      var chips = [["Pages vues · 30 jours", fmtN(o.views.cur)], ["Articles publiés", fmtN(pub)], ["Programmés", fmtN(prog)]];
+      if (o.messagesNew !== undefined) chips.splice(2, 0, ["Messages à lire", fmtN(o.messagesNew)]);
+      clear(view);
+      view.appendChild(h("section", { class: "hn-hero" },
+        h("div", { class: "hn-hero-top" }, h("div", null, h("h1", { text: "Bonjour, " + first }), h("p", { text: "Voici l'état réel de votre média." })), h("span", { class: "hn-date", text: today })),
+        h("div", { class: "hn-chips" }, chips.map(function (c) { return h("div", { class: "hn-chip" }, h("small", { text: c[0] }), h("strong", { text: c[1] })); }))));
+
+      var kpis = [
+        { ic: "eye", lab: "Pages vues", sub: "30 derniers jours", val: o.views.cur, extra: delta(o.views.cur, o.views.prev) },
+        { ic: "doc", lab: "Articles publiés", sub: total ? "sur " + fmtN(total) + " article" + (total > 1 ? "s" : "") : "Aucun article", val: pub, pct: total ? pub / total : 0 },
+        { ic: "pen", lab: "Brouillons", sub: "à terminer", val: dra, pct: total ? dra / total : 0 },
+      ];
+      if (o.subscribers !== undefined) kpis.push({ ic: "users", lab: "Abonnés confirmés", sub: "newsletter", val: o.subscribers });
+      else kpis.push({ ic: "clock", lab: "Programmés", sub: o.nextScheduled ? "prochain : " + fmt(o.nextScheduled) : "aucun à venir", val: prog });
+      view.appendChild(h("div", { class: "hn-kpis" }, kpis.map(function (k) {
+        return h("div", { class: "hn-kpi" },
+          h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico(k.ic, 20) }), k.extra || null),
+          h("strong", { class: "hn-kpi-val", text: fmtN(k.val) }), h("span", { class: "hn-kpi-lab", text: k.lab }), h("small", { class: "hn-muted", text: k.sub }),
+          k.pct !== undefined ? h("div", { class: "hn-prog thick" }, h("i", { style: "width:" + Math.round(k.pct * 100) + "%" })) : null);
+      })));
+
+      var actBody = !o.activity ? null : (o.activity.length ? h("ul", { class: "hn-act" }, o.activity.map(function (a) {
+        return h("li", null, h("span", { class: "hn-dot", "aria-hidden": "true" }), h("div", null, h("span", null, h("strong", { text: a.who || "Système" }), " " + actionLabel(a.action)), h("small", { class: "hn-muted", text: ago(a.at) })));
+      })) : emptyNote("Aucune activité récente."));
+      view.appendChild(h("div", { class: "hn-cols hn-cols-21" },
+        card("Lectures par jour", "30 derniers jours", vbars(o.perDay), linkBtn("Statistiques détaillées", "#/stats")),
+        actBody ? card("Activité récente", "Dernières modifications de l'équipe", actBody) : card("Votre espace", "Ce que vous pouvez faire ici",
+          emptyNote("Écrivez et suivez vos articles depuis l'onglet « Articles »."))));
+
+      view.appendChild(h("div", { class: "hn-cols" },
+        card("Articles les plus lus", "30 derniers jours", rankList(o.topArticles.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: artName, meta: function (x) { return catLabelOf(x.category); } }), linkBtn("Tout voir", "#/stats")),
+        card("Rédacteurs les plus lus", "Lectures cumulées de leurs articles", rankList(o.topAuthors.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return x.name; }, meta: function (x) { return x.articles + " article" + (x.articles > 1 ? "s" : "") + " lu" + (x.articles > 1 ? "s" : ""); } }), linkBtn("Tout voir", "#/stats"))));
+
+      var qa = [];
+      if (can("article.create")) qa.push(["navy", "pen", "Nouvel article", "Écrire un brouillon", function () { S.openNew = true; location.hash = "#/articles"; }]);
+      if (can("media.upload")) qa.push(["orange", "image", "Médias", "Images du site", function () { location.hash = "#/medias"; }]);
+      if (can("settings.manage")) qa.push(["navy-lt", "gear", "Réglages", "Nom, réseaux, mentions", function () { location.hash = "#/reglages"; }]);
+      if (can("author.manage")) qa.push(["cyan", "person", "Équipe", "Fiches des rédacteurs", function () { location.hash = "#/equipe"; }]);
+      var todo = [];
+      if (o.messagesNew !== undefined) todo.push(["Messages à lire", o.messagesNew, "Nouveaux messages du formulaire de contact.", "Ouvrir les messages", "#/messages"]);
+      todo.push(["Articles programmés", prog, prog ? "Prochain : " + fmt(o.nextScheduled) : "Aucun article en attente de publication.", "Voir les articles", "#/articles"]);
+      todo.push(["Brouillons", dra, "Articles commencés, pas encore publiés.", "Voir les articles", "#/articles"]);
+      if (o.jobsOpen !== undefined) todo.push(["Offres ouvertes", o.jobsOpen, "Offres affichées sur la page Carrières.", "Gérer les offres", "#/offres"]);
+      view.appendChild(h("div", { class: "hn-cols" },
+        card("Actions rapides", "Raccourcis fréquents", h("div", { class: "hn-qa" }, qa.map(function (q) {
+          return h("button", { type: "button", class: "hn-qa-tile " + q[0], onclick: q[4] }, h("span", { html: ico(q[1], 22) }), h("strong", { text: q[2] }), h("small", { text: q[3] }));
+        }))),
+        card("Rubriques les plus lues", "30 derniers jours", rankList(o.topCategories.slice(0, 5), { empty: "Pas encore de lectures mesurées.", name: function (x) { return x.label; } }))));
+      view.appendChild(card("À traiter", "Ce qui demande votre attention", h("div", { class: "hn-todo" }, todo.map(function (t) {
+        return h("div", { class: "hn-todo-card" + (t[1] > 0 ? " on" : "") },
+          h("span", { class: "hn-todo-n", text: fmtN(t[1]) }), h("strong", { text: t[0] }), h("p", { text: t[2] }),
+          h("a", { class: "hn-btn hn-btn-navy hn-btn-sm", href: t[4], text: t[3] }));
+      }))));
+    });
+  }
+
   function renderStats(view) {
     var days = h("select", { "aria-label": "Période" }, [["7", "7 jours"], ["30", "30 jours"], ["90", "90 jours"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
     days.value = "30";
     var box = h("div");
     function load() {
-      return api("GET", "stats/views?days=" + days.value).then(function (r) {
+      return ensureMeta().then(function () { return api("GET", "stats/overview?days=" + days.value); }).then(function (o) {
         clear(box);
-        if (!r.perDay.length) { box.appendChild(h("div", { class: "empty-state" }, h("div", { class: "es-icon", text: "📊" }), h("h3", { text: "Pas encore de données" }), h("p", { text: "Les lectures d'articles publiés seront comptées ici, sans aucune donnée personnelle." }))); return; }
-        var max = Math.max.apply(null, r.perDay.map(function (d) { return d.views; }));
-        box.appendChild(h("div", { class: "hn-card" }, h("h2", { text: "Lectures par jour" }), h("div", { class: "hn-bars" }, r.perDay.map(function (d) {
-          return h("div", { class: "b" }, h("span", { class: "hn-muted", text: new Date(d.day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) }), h("i", { style: "width:" + Math.max(2, Math.round(d.views / max * 100)) + "%" }), h("span", { text: d.views }));
-        }))));
-        box.appendChild(h("div", { class: "hn-card" }, h("h2", { text: "Articles les plus lus" }), h("table", { class: "hn-table" }, h("tbody", null, r.topArticles.map(function (t) {
-          return h("tr", null, h("td", { text: t.title || t.slug }), h("td", { text: t.views, style: "text-align:right;font-weight:700" }));
-        })))));
+        var lab = days.value + " derniers jours";
+        box.appendChild(h("div", { class: "hn-kpis three" },
+          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("eye", 20) }), delta(o.views.cur, o.views.prev)),
+            h("strong", { class: "hn-kpi-val", text: fmtN(o.views.cur) }), h("span", { class: "hn-kpi-lab", text: "Pages vues" }), h("small", { class: "hn-muted", text: lab + " · avant : " + fmtN(o.views.prev) })),
+          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("chart", 20) })),
+            h("strong", { class: "hn-kpi-val", text: fmtN(Math.round(o.views.cur / o.days)) }), h("span", { class: "hn-kpi-lab", text: "Moyenne par jour" }), h("small", { class: "hn-muted", text: lab })),
+          h("div", { class: "hn-kpi" }, h("div", { class: "hn-kpi-top" }, h("span", { class: "hn-kpi-ic", html: ico("doc", 20) })),
+            h("strong", { class: "hn-kpi-val", text: fmtN(o.articles.publie || 0) }), h("span", { class: "hn-kpi-lab", text: "Articles publiés" }), h("small", { class: "hn-muted", text: o.scope === "own" ? "parmi vos articles" : "au total" }))));
+        box.appendChild(card("Lectures par jour", lab, vbars(o.perDay)));
+        var empty = "Pas encore de lectures mesurées sur cette période.";
+        box.appendChild(h("div", { class: "hn-cols" },
+          card("Articles les plus lus", lab, rankList(o.topArticles, { empty: empty, name: artName, meta: function (x) { return catLabel(x.category); } })),
+          card("Rédacteurs les plus lus", "Lectures cumulées de leurs articles", rankList(o.topAuthors, { empty: empty, name: function (x) { return x.name; }, meta: function (x) { return x.articles + " article" + (x.articles > 1 ? "s" : "") + " lu" + (x.articles > 1 ? "s" : ""); } }))));
+        box.appendChild(h("div", { class: "hn-cols" },
+          card("Rubriques les plus lues", lab, rankList(o.topCategories, { empty: empty, name: function (x) { return x.label; } })),
+          card("Mots-clés les plus lus", lab, rankList(o.topTags, { empty: empty, name: function (x) { return "#" + x.label; } }))));
       });
     }
     days.addEventListener("change", load);
     clear(view);
-    view.appendChild(heading("Statistiques", "Lectures d'articles. Les robots et les visiteurs qui refusent le suivi ne sont pas comptés ; aucune adresse IP n'est conservée."));
-    view.appendChild(h("div", { class: "hn-filters" }, days));
+    view.appendChild(heading("Statistiques", "Lectures d'articles et de pages. Les robots et les visiteurs qui refusent le suivi ne sont pas comptés ; aucune adresse IP n'est conservée.", h("div", { class: "hn-filters", style: "margin:0" }, days)));
     view.appendChild(box);
     return load();
   }

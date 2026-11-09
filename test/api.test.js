@@ -711,3 +711,50 @@ test("équipe, partenaires, offres, réglages : droits, validation, rendu public
   assert.ok(hidden && brouillon);
   assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action IN ('partenaire.creation','offre.creation','equipe.creation','reglages.modification')")).length >= 4, "actions journalisées");
 });
+
+/* ═════════════════════════ TABLEAU DE BORD : vues, plus lus ═════════════════════════ */
+test("tableau de bord : chiffres réels, plus lus par article / rédacteur / rubrique / mot-clé, droits", async () => {
+  const pw = "mot de passe de test 2026";
+  await db().query("DELETE FROM rate_limits WHERE key LIKE 'login:email:%'"); // les tests précédents ont déjà beaucoup connecté l'administrateur
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 180);
+  const contrib = await loginAs("contrib@h.com", pw, 181);
+  const journa = await loginAs("journa@h.com", pw, 182);
+  assert.equal((await call("GET", "/api/admin/stats/overview")).status, 401);
+  assert.equal((await as(contrib, "GET", "/api/admin/stats/overview")).status, 403, "contributeur : pas de statistiques");
+
+  const q = (t, p) => db().query(t, p);
+  await q("DELETE FROM page_views"); // repart d'un compteur vide (les tests précédents ont compté quelques vues)
+  await q("INSERT INTO authors (id, name) VALUES ('ov-marie', 'Marie Lecture') ON CONFLICT DO NOTHING");
+  await q("INSERT INTO tags (slug, label) VALUES ('ov-tag', 'Tag Lu') ON CONFLICT DO NOTHING");
+  const mk = async (id, cat, authorId, authorName) => {
+    await q(`INSERT INTO articles (id, slug, status, category_slug, author_id, author_name, published_at) VALUES ($1, $1, 'publie', $2, $3, $4, now() - interval '2 days')`, [id, cat, authorId, authorName]);
+    await q(`INSERT INTO article_translations (article_id, lang, title, excerpt, content, reviewed) VALUES ($1, 'fr', $2, 'c', '<p>t</p>', true)`, [id, "Titre " + id]);
+  };
+  await mk("ov-a", "culture", "ov-marie", null); await mk("ov-b", "culture", "ov-marie", null); await mk("ov-c", "sport", null, "Signature Libre");
+  await q("INSERT INTO article_tags (article_id, tag_slug) VALUES ('ov-a', 'ov-tag'), ('ov-c', 'ov-tag')");
+  const pv = (path, art, hours, views) => q("INSERT INTO page_views (path, bucket, article_id, views) VALUES ($1, date_trunc('hour', now() - ($2 || ' hours')::interval), $3, $4)", [path, String(hours), art, views]);
+  await pv("/article/ov-a", "ov-a", 3, 50); await pv("/article/ov-b", "ov-b", 5, 10); await pv("/article/ov-c", "ov-c", 7, 30);
+  await pv("/article/ov-a", "ov-a", 24 * 40, 20); // période précédente (40 jours), hors des 30 derniers jours
+
+  let r = await as(admin, "GET", "/api/admin/stats/overview?days=30");
+  assert.equal(r.status, 200, r.text);
+  const o = r.json;
+  assert.deepEqual(o.views, { cur: 90, prev: 20 }, "vues de la période et de la précédente");
+  assert.equal(o.perDay.length, 30, "un point par jour, jours vides inclus");
+  assert.equal(o.perDay.reduce((a, d) => a + d.views, 0), 90);
+  assert.deepEqual(o.topArticles.slice(0, 3).map((x) => [x.slug, x.views]), [["ov-a", 50], ["ov-c", 30], ["ov-b", 10]]);
+  assert.deepEqual(o.topAuthors.slice(0, 2).map((x) => [x.name, x.views, x.articles]), [["Marie Lecture", 60, 2], ["Signature Libre", 30, 1]], "rédacteurs : fiche ou signature libre");
+  assert.deepEqual(o.topCategories.slice(0, 2).map((x) => [x.slug, x.views]), [["culture", 60], ["sport", 30]]);
+  assert.deepEqual(o.topTags.map((x) => [x.label, x.views]), [["Tag Lu", 80]]);
+  assert.ok(o.articles.publie >= 3 && o.scope === "all" && Array.isArray(o.activity), "compteurs, portée, activité (administrateur)");
+  assert.ok(typeof o.messagesNew === "number" && typeof o.subscribers === "number" && typeof o.jobsOpen === "number", "sections réservées aux droits");
+
+  assert.equal((await as(admin, "GET", "/api/admin/stats/overview?days=7")).json.views.cur, 90, "7 jours : mêmes vues récentes");
+  assert.equal((await as(admin, "GET", "/api/admin/stats/overview?days=999")).json.days, 30, "période inconnue : 30 jours");
+  assert.equal((await as(admin, "GET", "/api/admin/stats/overview?days=90")).json.views.prev, 0, "90 jours : rien avant");
+
+  const j = (await as(journa, "GET", "/api/admin/stats/overview")).json;
+  assert.equal(j.scope, "own", "journaliste : compteurs d'articles limités à ses propres articles");
+  assert.ok(j.activity === undefined && j.messagesNew === undefined && j.subscribers === undefined, "pas d'activité, ni messages, ni abonnés pour un journaliste");
+  assert.ok(!JSON.stringify(o).includes("@"), "aucune adresse e-mail dans la réponse");
+});

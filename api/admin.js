@@ -21,7 +21,7 @@
  * Relations lecteurs
  *   GET   contact-messages?status=    PATCH contact-messages/:id { status }
  *   GET   subscribers/stats           GET subscribers   GET subscribers/export (CSV)
- *   GET   stats/views?days=
+ *   GET   stats/views?days=   GET stats/overview?days=7|30|90 (tableau de bord : vues, plus lus, activité)
  * Médiathèque
  *   GET media                         images téléversées (les siennes, ou toutes avec media.manage)
  *   POST media                        octets bruts d'une image JPEG/PNG/WebP ≤ 2 Mo → { url:"/media/<id>" }
@@ -207,7 +207,55 @@ async function subscribersRoute(req, res, parts) {
 }
 
 /* ── Statistiques (internes, jamais publiées) ── */
+async function overviewRoute(req, res) {
+  const s = await auth.requireAuth(req, "stats.read");
+  const d = parseInt(getQuery(req).days, 10);
+  const days = [7, 30, 90].includes(d) ? d : 30;
+  const db = getDb();
+  const since = "pv.bucket >= now() - make_interval(days => $1)";
+  const all = auth.can(s, "article.edit_any");
+  const own = all ? "" : "AND created_by = $1";
+  const ownP = all ? [] : [s.user.id];
+  const [totals, perDay, topArticles, topAuthors, topCategories, topTags, byStatus, nextScheduled] = await Promise.all([
+    db.query(`SELECT COALESCE(SUM(views) FILTER (WHERE bucket >= now() - make_interval(days => $1)), 0)::int AS cur,
+                     COALESCE(SUM(views) FILTER (WHERE bucket < now() - make_interval(days => $1)), 0)::int AS prev
+              FROM page_views WHERE bucket >= now() - make_interval(days => $1 * 2)`, [days]),
+    db.query(`SELECT g::date AS day, COALESCE(v.views, 0)::int AS views
+              FROM generate_series(current_date - ($1::int - 1) * interval '1 day', current_date, interval '1 day') g
+              LEFT JOIN (SELECT date_trunc('day', bucket)::date AS day, SUM(views) AS views FROM page_views
+                         WHERE bucket >= current_date - ($1::int - 1) * interval '1 day' GROUP BY 1) v ON v.day = g::date
+              ORDER BY 1`, [days]),
+    db.query(`SELECT a.slug, t.title, a.category_slug AS category, SUM(pv.views)::int AS views
+              FROM page_views pv JOIN articles a ON a.id = pv.article_id
+              LEFT JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
+              WHERE ${since} GROUP BY a.slug, t.title, a.category_slug ORDER BY views DESC, a.slug LIMIT 10`, [days]),
+    db.query(`SELECT COALESCE(au.name, a.author_name) AS name, a.author_id AS id, SUM(pv.views)::int AS views, count(DISTINCT a.id)::int AS articles
+              FROM page_views pv JOIN articles a ON a.id = pv.article_id LEFT JOIN authors au ON au.id = a.author_id
+              WHERE ${since} AND btrim(COALESCE(au.name, a.author_name, '')) <> ''
+              GROUP BY 1, 2 ORDER BY views DESC, name LIMIT 10`, [days]),
+    db.query(`SELECT c.slug, c.label, SUM(pv.views)::int AS views FROM page_views pv
+              JOIN articles a ON a.id = pv.article_id JOIN categories c ON c.slug = a.category_slug
+              WHERE ${since} GROUP BY c.slug, c.label ORDER BY views DESC, c.label LIMIT 10`, [days]),
+    db.query(`SELECT g.slug, g.label, SUM(pv.views)::int AS views FROM page_views pv
+              JOIN article_tags x ON x.article_id = pv.article_id JOIN tags g ON g.slug = x.tag_slug
+              WHERE ${since} GROUP BY g.slug, g.label ORDER BY views DESC, g.label LIMIT 10`, [days]),
+    db.query(`SELECT status::text AS status, count(*)::int AS n FROM articles WHERE true ${own} GROUP BY 1`, ownP),
+    db.query(`SELECT min(published_at) AS at FROM articles WHERE status = 'programme' AND published_at > now() ${own}`, ownP),
+  ]);
+  const out = { ok: true, days, views: totals[0], perDay, topArticles, topAuthors, topCategories, topTags,
+    articles: Object.fromEntries(byStatus.map((r) => [r.status, r.n])), nextScheduled: nextScheduled[0].at, scope: all ? "all" : "own" };
+  if (auth.can(s, "contact.read")) out.messagesNew = (await db.query("SELECT count(*)::int AS n FROM contact_messages WHERE status = 'nouveau'"))[0].n;
+  if (auth.can(s, "subscriber.read")) out.subscribers = (await db.query("SELECT count(*)::int AS n FROM subscribers WHERE status = 'confirme'"))[0].n;
+  if (auth.can(s, "job.manage")) out.jobsOpen = (await db.query("SELECT count(*)::int AS n FROM jobs WHERE status = 'ouvert'"))[0].n;
+  if (all) {
+    out.activity = await db.query(`SELECT l.action, l.entity, l.created_at AS at, u.display_name AS who FROM audit_log l LEFT JOIN users u ON u.id = l.user_id
+      WHERE l.action NOT IN ('logout') AND l.action NOT LIKE 'login%' ORDER BY l.created_at DESC LIMIT 8`);
+  }
+  send(res, 200, out);
+}
+
 async function statsRoute(req, res, parts) {
+  if (parts[1] === "overview" && req.method === "GET") return overviewRoute(req, res);
   if (parts[1] !== "views" || req.method !== "GET") throw new HttpError(404, "Route inconnue.");
   await auth.requireAuth(req, "stats.read");
   const days = Math.min(Math.max(parseInt(getQuery(req).days, 10) || 30, 1), 365);

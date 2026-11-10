@@ -16,6 +16,19 @@
   var sortSelect = document.getElementById("filterSort");
   if (!resultsEl) return;
 
+  // Langue de la page : le français est à la racine, l'anglais sous /en (index et liens correspondants).
+  var EN = document.documentElement.lang === "en";
+  var PRE = EN ? "/en" : "";
+  var TXT = EN ? {
+    none: "No results", noneHint: "Try other keywords, or come back later: new articles are added regularly.",
+    one: " result", many: " results", newsroom: "Newsroom", cats: "All sections", tags: "All tags",
+    unavailable: "Search unavailable", unavailableHint: "The search index could not be loaded. If you are viewing this site locally, run it through an HTTP server (see README)."
+  } : {
+    none: "Aucun résultat", noneHint: "Essayez d'autres mots-clés, ou revenez plus tard : de nouveaux articles sont ajoutés régulièrement.",
+    one: " résultat", many: " résultats", newsroom: "Rédaction", cats: "Toutes les rubriques", tags: "Tous les tags",
+    unavailable: "Recherche indisponible", unavailableHint: "L'index de recherche n'a pas pu être chargé. Si vous consultez ce site en local, lancez-le via un serveur HTTP (voir README)."
+  };
+
   function stripAccents(s) {
     return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
@@ -34,21 +47,21 @@
     if (!list.length) {
       resultsEl.innerHTML =
         '<div class="empty-state"><div class="es-icon">🔍</div>' +
-        "<h3>Aucun résultat</h3>" +
-        "<p>Essayez d'autres mots-clés, ou revenez plus tard : de nouveaux articles sont ajoutés régulièrement.</p></div>";
+        "<h3>" + TXT.none + "</h3>" +
+        "<p>" + TXT.noneHint + "</p></div>";
       countEl.textContent = "";
       return;
     }
-    countEl.textContent = list.length + " résultat" + (list.length > 1 ? "s" : "");
+    countEl.textContent = list.length + (list.length > 1 ? TXT.many : TXT.one);
     resultsEl.innerHTML = list
       .map(function (a) {
         return (
-          '<a class="news-card reveal in" href="/article/' + esc(a.slug) + '.html">' +
-          '<div class="nc-img"><div class="nc-img-bg" style="background:linear-gradient(135deg,#0A1F44,#334E7A);height:100%"></div>' +
+          '<a class="news-card reveal in" href="' + PRE + '/article/' + esc(a.slug) + '">' +
+          '<div class="nc-img"><div class="nc-img-bg" style="background:var(--navy) url(/assets/logo.png) center/44% no-repeat;height:100%"></div>' +
           '<span class="' + esc(a.tagClass || "tag") + ' nc-badge">' + esc(a.categoryLabel) + "</span></div>" +
           '<h3 class="nc-title">' + esc(a.title) + "</h3>" +
           '<p class="nc-excerpt">' + esc(a.excerpt) + "</p>" +
-          '<div class="nc-foot"><span class="nc-author">' + esc(a.authorName || "Rédaction") + "</span><span>·</span><span>" + esc(a.publishedLabel || "") + "</span></div>" +
+          '<div class="nc-foot"><span class="nc-author">' + esc(a.authorName || TXT.newsroom) + "</span><span>·</span><span>" + esc(a.publishedLabel || "") + "</span></div>" +
           "</a>"
         );
       })
@@ -71,7 +84,7 @@
     render(list);
   }
 
-  fetch("/content/search-index.json")
+  fetch(PRE + "/content/search-index.json")
     .then(function (r) { return r.json(); })
     .then(function (all) {
       qInput.value = getParam("q");
@@ -97,7 +110,7 @@
     })
     .catch(function () {
       resultsEl.innerHTML =
-        '<div class="empty-state"><div class="es-icon">⚠️</div><h3>Recherche indisponible</h3>' +
-        "<p>L'index de recherche n'a pas pu être chargé. Si vous consultez ce site en local, lancez-le via un serveur HTTP (voir README).</p></div>";
+        '<div class="empty-state"><div class="es-icon">⚠️</div><h3>' + TXT.unavailable + "</h3>" +
+        "<p>" + TXT.unavailableHint + "</p></div>";
     });
 })();

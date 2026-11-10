@@ -105,6 +105,22 @@ async function remove(s, id) {
   return { ok: true };
 }
 
+// Images téléversées jamais utilisées (ni image principale, ni texte d'article, ni photo d'équipe, ni partenaire)
+// et déposées il y a plus de 24 h (une image qu'on vient d'ajouter dans un éditeur non enregistré n'est jamais touchée).
+const UNUSED_SQL = `FROM media m JOIN media_files f ON f.media_id = m.id WHERE m.created_at < now() - interval '24 hours' AND ${USAGE_SQL} = 0`;
+
+async function unused() {
+  const r = (await getDb().query(`SELECT count(*)::int AS n, COALESCE(sum(m.size_bytes), 0)::bigint AS bytes ${UNUSED_SQL}`))[0];
+  return { count: r.n, bytes: Number(r.bytes) };
+}
+
+async function cleanup(s) {
+  const rows = await getDb().query(`DELETE FROM media WHERE id IN (SELECT m.id ${UNUSED_SQL}) RETURNING id, size_bytes`);
+  const bytes = rows.reduce((a, x) => a + Number(x.size_bytes || 0), 0);
+  await audit(s.user.id, "media.nettoyage", "media", null, { images: rows.length, octets: bytes });
+  return { ok: true, deleted: rows.length, bytes };
+}
+
 /** Sert l'image (route publique /media/<id>). Contenu immuable : cache d'un an. */
 async function serve(req, res, id) {
   if (!UUID_RE.test(String(id || ""))) { res.statusCode = 404; res.setHeader("Content-Type", "text/plain; charset=utf-8"); return res.end("Introuvable"); }
@@ -124,4 +140,4 @@ async function serve(req, res, id) {
   res.end(req.method === "HEAD" ? undefined : buf);
 }
 
-module.exports = { upload, list, remove, serve, sniff, MAX_BYTES, UUID_RE };
+module.exports = { upload, list, remove, unused, cleanup, serve, sniff, MAX_BYTES, UUID_RE };

@@ -770,9 +770,12 @@ test("pages fixes : droits, nettoyage du HTML, rendu public, retour au texte d'o
   let r = await as(admin, "GET", "/api/admin/pages");
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.json.items.map((p) => p.slug), ["a-propos", "charte-editoriale", "publicite", "cgu", "confidentialite", "cookies"]);
-  assert.ok(r.json.items.every((p) => p.custom === false), "aucune page modifiée au départ");
+  assert.ok(r.json.items.every((p) => p.versions.fr.custom === false && p.versions.en.custom === false), "aucune page modifiée au départ (ni en français ni en anglais)");
+  assert.equal(r.json.items[0].versions.en.title, "Who we are", "titre anglais d'origine");
   r = await as(admin, "GET", "/api/admin/pages/a-propos");
   assert.equal(r.json.page.content, null, "texte d'origine : pas de contenu en base");
+  assert.equal((await as(admin, "GET", "/api/admin/pages/a-propos?lang=en")).json.page.title, "Who we are");
+  assert.equal((await as(admin, "GET", "/api/admin/pages/a-propos?lang=ht")).status, 400, "seules les langues fr et en existent");
   assert.equal((await as(admin, "GET", "/api/admin/pages/mentions-legales")).status, 404, "seules les pages prévues sont modifiables");
   assert.equal((await as(admin, "GET", "/api/admin/pages/..%2Fetc")).status, 404);
 
@@ -790,13 +793,23 @@ test("pages fixes : droits, nettoyage du HTML, rendu public, retour au texte d'o
 
   // rendu public
   const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
-  const buildTo = () => { const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-pg-")); execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out }, stdio: "pipe" }); return (f) => fs.readFileSync(path.join(out, f), "utf8"); };
+  const buildTo = () => { const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-pg-")); execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out, I18N_STRICT: "1" }, stdio: "pipe" }); return (f) => fs.readFileSync(path.join(out, f), "utf8"); };
   let rd = buildTo();
   let page = rd("a-propos.html");
   assert.ok(page.includes("<h1>Qui sommes-nous &amp; pourquoi</h1>") && page.includes("Notre mission $"), "page modifiée publiée, titre échappé, « $ » intact");
   assert.ok(!/alert\(|evil\.example|onerror/i.test(page), "rien de dangereux dans la page publiée");
   assert.ok(page.includes('content="Description réelle"') || page.includes("Description réelle"), "description pour les moteurs de recherche");
   assert.ok(!rd("charte-editoriale.html").includes("Qui sommes-nous &amp; pourquoi") && rd("charte-editoriale.html").includes("Charte éditoriale"), "les autres pages gardent leur texte d'origine");
+
+  // version anglaise de la même page : indépendante de la française
+  r = await as(admin, "PUT", "/api/admin/pages/a-propos?lang=en", { title: "About <b>us</b>", description: "English description", content: "<h2>Our mission</h2><p>An English text long enough to be saved as the page.</p><script>alert(1)</script>" });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.page.lang, "en");
+  rd = buildTo();
+  assert.ok(rd("en/a-propos.html").includes("<h1>About us</h1>") && rd("en/a-propos.html").includes('<html lang="en">') && !rd("en/a-propos.html").includes("alert(1)"), "page anglaise modifiée publiée sous /en, nettoyée");
+  assert.ok(rd("a-propos.html").includes("Qui sommes-nous &amp; pourquoi"), "la version française reste intacte");
+  assert.equal((await as(admin, "DELETE", "/api/admin/pages/a-propos?lang=en")).status, 200);
+  assert.ok(buildTo()("en/a-propos.html").includes("Who we are"), "texte d'origine anglais rétabli");
 
   // retour au texte d'origine
   assert.equal((await as(admin, "DELETE", "/api/admin/pages/a-propos")).status, 200);
@@ -809,8 +822,106 @@ test("pages fixes : droits, nettoyage du HTML, rendu public, retour au texte d'o
   assert.equal(r.status, 200, r.text);
   assert.equal(r.json.settings.footerText, "Votre média indépendant & libre.");
   assert.ok(buildTo()("index.html").includes('<p class="ft-desc">Votre média indépendant &amp; libre.</p>'), "pied de page personnalisé, échappé");
+  assert.ok(buildTo()("en/index.html").includes("Your reference source of information"), "pied de page anglais : traduction d'origine tant qu'aucune version anglaise n'est saisie");
   r = await as(admin, "PUT", "/api/admin/settings", { ...cur, footerText: "" });
   assert.equal(r.json.settings.footerText, "");
   assert.ok(buildTo()("index.html").includes("Un journalisme indépendant, rigoureux"), "texte d'origine du pied de page rétabli");
   assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action IN ('page.modification','page.retablie')")).length >= 2, "actions journalisées");
+});
+
+/* ═════════════════════════ VERSION ANGLAISE, RUBRIQUES, IMAGES INUTILISÉES ═════════════════════════ */
+test("version anglaise : traductions relues seulement, liens et langue, aucune phrase française, pas de créole", async () => {
+  await db().query("DELETE FROM rate_limits WHERE key LIKE 'login:email:%'");
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 200);
+  const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+  const q = (t, p) => db().query(t, p);
+  const mk = async (id, cat, extra = "") => {
+    await q(`INSERT INTO articles (id, slug, status, category_slug, author_name, published_at, original_lang) VALUES ($1, $1, 'publie', $2, 'Signature', now() - interval '1 day', 'fr')`, [id, cat]);
+    await q(`INSERT INTO article_translations (article_id, lang, title, excerpt, content, reviewed) VALUES ($1, 'fr', $2, 'Chapeau français', '<p>Texte français.</p>', true)`, [id, "Titre FR " + id]);
+  };
+  await mk("en-ok", "culture"); await mk("en-nonrelu", "culture"); await mk("en-sans", "culture"); await mk("en-ht", "culture");
+  await q(`INSERT INTO article_translations (article_id, lang, title, excerpt, content, reviewed) VALUES ('en-ok', 'en', 'English title ok', 'English summary', '<p>English text.</p>', true), ('en-nonrelu', 'en', 'English NOT reviewed', 'x', '<p>pas relu</p>', false)`);
+  await q("INSERT INTO article_translations (article_id, lang, title, excerpt, content, reviewed) VALUES ('en-ht', 'ht', 'Tit kreyòl', 'x', '<p>kreyòl</p>', true)"); // aucune interface ne le propose plus ; ne doit jamais sortir
+  // créole refusé par l'API d'édition
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Test langue", category: "culture" })).json.article;
+  assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { ht: { title: "Tit", content: "<p>x</p>" } } })).status, 400, "le créole n'est plus accepté");
+
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-en-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out, I18N_STRICT: "1" }, stdio: "pipe" }); // échoue si une phrase n'a pas de traduction
+  const rd = (f) => fs.readFileSync(path.join(out, f), "utf8"), has = (f) => fs.existsSync(path.join(out, f));
+
+  assert.ok(has("en/article/en-ok.html") && !has("en/article/en-nonrelu.html") && !has("en/article/en-sans.html") && !has("en/article/en-ht.html"), "anglais : seulement les traductions relues et validées");
+  assert.ok(has("article/en-nonrelu.html") && has("article/en-sans.html"), "le français garde tous ses articles");
+  const en = rd("en/article/en-ok.html");
+  assert.ok(/<html lang="en">/.test(en) && en.includes("English title ok") && en.includes("English text.") && !en.includes("Titre FR"), "texte anglais, jamais le français");
+  assert.ok(!/NOT reviewed|pas relu|kreyòl|Tit kreyòl/.test(rd("en/index.html") + rd("en/culture.html")), "rien de non relu sur l'accueil ni la rubrique");
+  const idx = JSON.parse(rd("en/content/search-index.json"));
+  assert.ok(idx.some((x) => x.slug === "en-ok") && !idx.some((x) => /^en-(nonrelu|sans|ht)$/.test(x.slug)), "index de recherche anglais : seulement ce qui est publié en anglais");
+  assert.ok(JSON.parse(rd("content/search-index.json")).length >= 4, "index français complet");
+
+  // liens, canonical, équivalents de langue
+  assert.ok(en.includes('href="/en/culture"') && en.includes('href="/en/contact"') && !en.includes('href="/culture"'), "liens internes préfixés par /en");
+  assert.ok(en.includes('<link rel="canonical" href="https://www.hnetmedia.com/en/article/en-ok">'), "canonical propre, sans .html : " + (en.match(/rel="canonical"[^>]*/) || [""])[0]);
+  assert.ok(en.includes('hreflang="fr" href="https://www.hnetmedia.com/article/en-ok"') && en.includes('hreflang="en" href="https://www.hnetmedia.com/en/article/en-ok"'), "hreflang fr/en");
+  assert.ok(en.includes('<a class="lang-btn" href="/article/en-ok" hreflang="fr"') && en.includes('<a class="lang-btn active" href="/en/article/en-ok" hreflang="en"'), "sélecteur de langue : vrai lien vers la même page");
+  const frOnly = rd("article/en-sans.html");
+  assert.ok(frOnly.includes('<a class="lang-btn" href="/en" hreflang="en"') && !frOnly.includes('hreflang="x-default"'), "article sans version anglaise : le sélecteur renvoie à l'accueil anglais, pas d'hreflang trompeur");
+  assert.ok(rd("index.html").includes('href="/culture"') && !rd("index.html").includes(".html\""), "français : liens propres, sans .html");
+  assert.ok(rd("sitemap.xml").includes("<loc>https://www.hnetmedia.com/en/article/en-ok</loc>") && rd("sitemap.xml").includes("<loc>https://www.hnetmedia.com/article/en-sans</loc>") && !rd("sitemap.xml").includes("/en/article/en-sans") && !rd("sitemap.xml").includes(".html"), "plan du site : anglais seulement pour ce qui existe, URLs propres");
+  assert.ok(rd("en/rss.xml").includes("English title ok") && !rd("en/rss.xml").includes("Titre FR") && rd("en/rss.xml").includes("<language>en-gb</language>"), "flux RSS anglais");
+
+  // aucune phrase française dans l'interface anglaise (hors contenu saisi : articles, noms)
+  for (const f of ["en/index.html", "en/culture.html", "en/a-propos.html", "en/contact.html", "en/recherche.html", "en/plan-du-site.html", "en/404.html", "en/cookies.html", "en/confidentialite.html", "en/mentions-legales.html", "en/carrieres.html", "en/equipe.html", "en/partenaires.html", "en/publicite.html", "en/cgu.html", "en/charte-editoriale.html"]) {
+    const text = rd(f).replace(/<head>[\s\S]*?<\/head>/, "").replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ");
+    const clean = text.replace(/La rédaction|Signature|Titre FR[^ ]*|Chapeau français|Texte français/g, "");
+    const bad = clean.match(/.{0,30}(\b(pour|dans|votre|vous|nos|notre|des|les|cette|sont|avec)\b|[éèêàçùô]).{0,30}/);
+    assert.ok(!bad, `texte français dans ${f} : « ${bad && bad[0]} »`);
+  }
+  assert.ok(rd("en/contact.html").includes('<option value="Rédaction">Newsroom</option>'), "formulaire de contact : texte anglais, valeur d'origine envoyée au serveur");
+  assert.ok(rd("en/index.html").includes("Politics") && rd("en/index.html").includes("World"), "rubriques en anglais");
+});
+
+test("rubriques : libellés FR/EN modifiables, droits, ordre dans le menu ; images inutilisées nettoyées", async () => {
+  await db().query("DELETE FROM rate_limits WHERE key LIKE 'login:email:%'");
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 210);
+  const journa = await loginAs("journa@h.com", "mot de passe de test 2026", 211);
+  const editeur = await loginAs("editeur@h.com", "mot de passe de test 2026", 212);
+  assert.equal((await call("GET", "/api/admin/categories")).status, 401);
+  assert.equal((await as(journa, "GET", "/api/admin/categories")).status, 403, "réservé à la gestion des rubriques");
+  let r = await as(editeur, "GET", "/api/admin/categories");
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.items.find((c) => c.slug === "monde").labelEn, "World", "libellés anglais d'origine");
+  assert.equal((await as(editeur, "PUT", "/api/admin/categories/monde", { label: "", labelEn: "World" })).status, 400);
+  assert.equal((await as(editeur, "PUT", "/api/admin/categories/monde", { label: "Monde", position: "500" })).status, 400);
+  assert.equal((await as(editeur, "PUT", "/api/admin/categories/inconnue", { label: "Nom valide" })).status, 404);
+  r = await as(editeur, "PUT", "/api/admin/categories/sport", { label: "Sports <b>locaux</b>", labelEn: "Local sport", description: "Description française.", descriptionEn: "English description.", position: 99 });
+  assert.equal(r.status, 200, r.text);
+  const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-cat-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out, I18N_STRICT: "1" }, stdio: "pipe" });
+  const home = fs.readFileSync(path.join(out, "index.html"), "utf8"), homeEn = fs.readFileSync(path.join(out, "en/index.html"), "utf8");
+  assert.ok(home.includes(">Sports locaux<") && !home.includes("<b>locaux"), "menu français : nom modifié, balises retirées");
+  assert.ok(homeEn.includes(">Local sport<"), "menu anglais : nom anglais");
+  assert.ok(home.indexOf('data-route="sport"') > home.indexOf('data-route="opinions"'), "ordre du menu suivi (sport passé en dernier)");
+  assert.ok(fs.readFileSync(path.join(out, "en/sport.html"), "utf8").includes("English description."), "description anglaise sur la page de la rubrique");
+  await as(editeur, "PUT", "/api/admin/categories/sport", { label: "Sport", labelEn: "Sport", description: "Résultats, compétitions, transferts et portraits d'athlètes.", descriptionEn: "Results, competitions, transfers and athlete profiles.", position: 3 });
+
+  // nettoyage des images inutilisées : seulement > 24 h, jamais celles qui servent
+  const png = fakeImage("png", 200, 200);
+  const old = (await upload(admin, png)).json.media, usedOld = (await upload(admin, fakeImage("png", 210, 210))).json.media, fresh = (await upload(admin, fakeImage("png", 220, 220))).json.media;
+  await db().query("UPDATE media SET created_at = now() - interval '3 days' WHERE id IN ($1, $2)", [old.id, usedOld.id]);
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Image utile", category: "culture" })).json.article;
+  assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { mainImage: { url: usedOld.url, alt: "Utile" } })).status, 200);
+  assert.equal((await as(journa, "POST", "/api/admin/media/cleanup")).status, 403, "réservé à la gestion de la médiathèque");
+  r = await as(editeur, "GET", "/api/admin/media/unused");
+  assert.equal(r.json.count >= 1, true);
+  const before = r.json.count;
+  r = await as(editeur, "POST", "/api/admin/media/cleanup");
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.deleted, before, "toutes les images inutilisées de plus de 24 h supprimées");
+  assert.equal((await getMedia(old.id)).status, 404, "image inutilisée ancienne supprimée");
+  assert.equal((await getMedia(usedOld.id)).status, 200, "image utilisée conservée même ancienne");
+  assert.equal((await getMedia(fresh.id)).status, 200, "image récente conservée");
+  assert.equal((await as(editeur, "GET", "/api/admin/media/unused")).json.count, 0);
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'media.nettoyage'")).length === 1, "nettoyage journalisé");
 });

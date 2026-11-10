@@ -38,12 +38,15 @@ async function track(req, res) {
 }
 
 const PUBLIC_COLS = `a.slug, t.title, a.category_slug AS category, a.published_at`;
-const PUBLIC_JOIN = `JOIN articles a ON a.id = pv.article_id AND a.status = 'publie' AND a.published_at <= now()
-  JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang`;
+// Titre dans la langue demandée : texte d'origine, ou traduction relue et validée (même règle que le site).
+const joinFor = (lang) => `JOIN articles a ON a.id = pv.article_id AND a.status = 'publie' AND a.published_at <= now()
+  JOIN article_translations t ON t.article_id = a.id AND t.lang = '${lang}' AND (t.reviewed OR a.original_lang = '${lang}') AND btrim(t.title) <> ''`;
 
 async function top(req, res) {
   const q = getQuery(req);
   const n = Math.min(Math.max(parseInt(q.limit, 10) || 5, 1), 10);
+  const lang = q.lang === "en" ? "en" : "fr";
+  const PUBLIC_JOIN = joinFor(lang);
   const db = getDb();
   let rows;
   if (q.top === "tendances") {

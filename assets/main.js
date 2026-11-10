@@ -11,7 +11,7 @@
   var dateEl = document.getElementById("currentDate");
   if (dateEl) {
     var d = new Date();
-    dateEl.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    dateEl.textContent = d.toLocaleDateString(document.documentElement.lang === "en" ? "en-GB" : "fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   }
 
   /* ── ANNÉE COURANTE (footer) ── */
@@ -19,52 +19,13 @@
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 
   /* ── LIEN DE NAVIGATION ACTIF (basé sur l'URL réelle) ── */
-  var path = location.pathname.replace(/\/index\.html$/, "/").replace(/\.html$/, "").replace(/\/$/, "") || "/";
+  var path = location.pathname.replace(/\/index\.html$/, "/").replace(/\.html$/, "").replace(/^\/en(?=\/|$)/, "").replace(/\/$/, "") || "/";
   document.querySelectorAll(".nav-link").forEach(function (a) {
     var route = a.getAttribute("data-route");
     var isHome = route === "home" && (path === "" || path === "/");
     var isMatch = route && path === "/" + route;
     if (isHome || isMatch) a.classList.add("on");
   });
-
-  /* ── LANGUE (FR/EN) ──
-     Phase 1 : bascule l'attribut lang + les libellés UI marqués [data-i18n].
-     Le contenu éditorial (articles) n'est pas encore traduit :
-     tant qu'aucune traduction réelle n'existe, on reste en FR
-     et on l'indique honnêtement plutôt que de le taire. */
-  var LANG_KEY = "hnet_lang";
-  window.setLang = function (lang, btn) {
-    document.querySelectorAll(".lang-btn").forEach(function (b) { b.classList.remove("active"); });
-    if (btn) btn.classList.add("active");
-    try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
-    document.documentElement.setAttribute("lang", lang);
-    document.querySelectorAll("[data-i18n-fr]").forEach(function (el) {
-      var txt = lang === "en" ? el.getAttribute("data-i18n-en") : el.getAttribute("data-i18n-fr");
-      if (txt) el.textContent = txt;
-    });
-    var noticeId = "langNotice";
-    var existing = document.getElementById(noticeId);
-    if (lang === "en") {
-      if (!existing) {
-        var n = document.createElement("div");
-        n.id = noticeId;
-        n.className = "dev-notice";
-        n.style.maxWidth = "1400px";
-        n.style.margin = "10px auto 0";
-        n.textContent = "English version coming soon — editorial content is not yet translated. Showing French content.";
-        var header = document.querySelector(".site-header");
-        if (header) header.insertAdjacentElement("afterend", n);
-      }
-    } else if (existing) {
-      existing.remove();
-    }
-  };
-  (function initLang() {
-    var saved = "fr";
-    try { saved = localStorage.getItem(LANG_KEY) || "fr"; } catch (e) {}
-    var btn = document.querySelector('.lang-btn[data-lang="' + saved + '"]');
-    window.setLang(saved, btn);
-  })();
 
   /* ── ANIMATIONS AU DÉFILEMENT ── */
   var revObs = new IntersectionObserver(function (entries) {
@@ -79,12 +40,13 @@
      Une lecture = une ouverture d'article. Rien n'est envoyé si le visiteur a activé « ne pas suivre » (DNT / GPC) ;
      le serveur ignore en plus les robots et les rechargements rapprochés. Aucun cookie, aucune IP conservée. */
   (function trackView() {
-    if (!/^\/article\/[a-z0-9-]+(\.html)?$/.test(location.pathname)) return;
+    var articlePath = location.pathname.replace(/^\/en(?=\/)/, "");
+    if (!/^\/article\/[a-z0-9-]+(\.html)?$/.test(articlePath)) return;
     if (navigator.doNotTrack === "1" || navigator.globalPrivacyControl) return;
     try {
-      var blob = new Blob([JSON.stringify({ path: location.pathname })], { type: "application/json" });
+      var blob = new Blob([JSON.stringify({ path: articlePath })], { type: "application/json" });
       if (!(navigator.sendBeacon && navigator.sendBeacon("/api/views", blob))) {
-        fetch("/api/views", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: location.pathname }), keepalive: true });
+        fetch("/api/views", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: articlePath }), keepalive: true });
       }
     } catch (e) { /* mesure facultative */ }
   })();
@@ -93,7 +55,8 @@
   (function mostRead() {
     var box = document.getElementById("mostRead"), list = document.getElementById("mostReadList");
     if (!box || !list || !window.fetch) return;
-    fetch("/api/views?top=lus&limit=5", { credentials: "omit" })
+    var en = document.documentElement.lang === "en";
+    fetch("/api/views?top=lus&limit=5&lang=" + (en ? "en" : "fr"), { credentials: "omit" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.items || !d.items.length) return;
@@ -101,7 +64,7 @@
           var li = document.createElement("li"), a = document.createElement("a"), n = document.createElement("span"), t = document.createElement("span");
           n.className = "mr-n"; n.textContent = String(i + 1);
           t.className = "mr-t"; t.textContent = it.title;
-          a.href = it.url + ".html"; a.appendChild(n); a.appendChild(t);
+          a.href = (en ? "/en" : "") + it.url; a.appendChild(n); a.appendChild(t);
           li.appendChild(a); list.appendChild(li);
         });
         box.hidden = false;
@@ -126,7 +89,7 @@
     if (platform === "copy") {
       navigator.clipboard && navigator.clipboard.writeText(window.location.href);
       var btn = document.getElementById("copyLinkBtn");
-      if (btn) { var old = btn.textContent; btn.textContent = "Lien copié !"; setTimeout(function () { btn.textContent = old; }, 1800); }
+      if (btn) { var old = btn.textContent; btn.textContent = document.documentElement.lang === "en" ? "Link copied!" : "Lien copié !"; setTimeout(function () { btn.textContent = old; }, 1800); }
       return;
     }
     if (map[platform]) window.open(map[platform], "_blank", "noopener,width=600,height=500");

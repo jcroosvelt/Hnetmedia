@@ -7,7 +7,7 @@ const { cleanHtml, plainText } = require("./sanitize");
 const { can, audit } = require("./auth");
 const { triggerRebuild } = require("./deploy-hook");
 
-const LANGS = ["fr", "en", "ht"];
+const LANGS = ["fr", "en"];
 const TYPES = ["information", "opinion", "tribune", "editorial", "analyse"];
 const slugify = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 100);

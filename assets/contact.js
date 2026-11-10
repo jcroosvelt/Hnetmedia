@@ -12,6 +12,27 @@
   if (!form) return;
   var msgBox = document.getElementById("contactMsg");
   var openedAt = Date.now(); // anti-robots : un humain met plus de quelques secondes à écrire
+  var EN = document.documentElement.lang === "en";
+  // Textes de la page : français (messages du serveur affichés tels quels) ou anglais (messages propres au statut).
+  var TXT = EN ? {
+    invalid: "Please enter your name, a valid email address and a message.",
+    category: "Please choose the type of request.",
+    short: "Your message is too short (10 characters minimum).",
+    sending: "Sending…",
+    ok: "Your message has been received. The newsroom will reply by email.",
+    fail: "Sending failed. Please try again a little later.",
+    bad: "Your message could not be sent. Please check the fields, wait a few seconds and try again.",
+    many: "You have sent several messages recently. Please try again in an hour.",
+    net: "Sending failed (connection). Please try again."
+  } : {
+    invalid: "Merci de renseigner votre nom, un email valide et un message.",
+    category: "Merci de choisir le type de demande.",
+    short: "Votre message est trop court (10 caractères minimum).",
+    sending: "Envoi en cours…",
+    ok: "Votre message a bien été reçu.",
+    fail: "L'envoi a échoué. Merci de réessayer un peu plus tard.",
+    net: "L'envoi a échoué (connexion). Merci de réessayer."
+  };
 
   function showMsg(text, isError) {
     msgBox.hidden = false;
@@ -29,22 +50,22 @@
     var message = String(data.get("message") || "").trim();
 
     if (!name || !message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showMsg("Merci de renseigner votre nom, un email valide et un message.", true);
+      showMsg(TXT.invalid, true);
       return;
     }
     if (!data.get("category")) {
-      showMsg("Merci de choisir le type de demande.", true);
+      showMsg(TXT.category, true);
       return;
     }
     if (message.length < 10) {
-      showMsg("Votre message est trop court (10 caractères minimum).", true);
+      showMsg(TXT.short, true);
       return;
     }
 
     var submitBtn = form.querySelector("button[type=submit]");
     var originalLabel = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.textContent = "Envoi en cours…";
+    submitBtn.textContent = TXT.sending;
 
     fetch("/api/contact", {
       method: "POST",
@@ -62,17 +83,17 @@
       .then(function (res) {
         return res.json().catch(function () { return null; }).then(function (body) {
           if (res.ok && body && body.ok) {
-            showMsg(body.message || "Votre message a bien été reçu.", false);
+            showMsg(EN ? TXT.ok : (body.message || TXT.ok), false);
             form.reset();
             openedAt = Date.now();
           } else {
-            showMsg((body && body.error) || "L'envoi a échoué. Merci de réessayer un peu plus tard.", true);
+            showMsg(EN ? (res.status === 429 ? TXT.many : res.status === 400 ? TXT.bad : TXT.fail) : ((body && body.error) || TXT.fail), true);
             openedAt = Date.now() - 4000; // un nouvel essai immédiat n'est pas pris pour un robot
           }
         });
       })
       .catch(function () {
-        showMsg("L'envoi a échoué (connexion). Merci de réessayer.", true);
+        showMsg(TXT.net, true);
       })
       .finally(function () {
         submitBtn.disabled = false;

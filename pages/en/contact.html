@@ -1,0 +1,26 @@
+<div class="wrap">
+  <div class="breadcrumb"><a href="/">Home</a> / Contact</div>
+  <div class="static-wrap" style="margin-left:0">
+    <h1>Contact</h1>
+    <p class="static-lead">A question, an error to report, a right of reply, an article proposal? Write to us.</p>
+    <div class="static-grid">
+      <div class="static-card"><strong>Newsroom</strong><span>redaction@hnetmedia.com</span></div>
+      <div class="static-card"><strong>Advertising &amp; partnerships</strong><span>partenariats@hnetmedia.com</span></div>
+    </div>
+    <h2>Contact form</h2>
+    <form class="contact-form" id="contactForm" novalidate>
+      <input type="text" name="name" placeholder="Your name" aria-label="Your name" autocomplete="name" maxlength="100" required>
+      <input type="email" name="email" placeholder="Your email address" aria-label="Your email address" autocomplete="email" maxlength="254" required>
+      <select name="category" aria-label="Type of request" required>
+        <option value="" disabled selected>Type of request</option>
+        <!--CONTACT_CATEGORIES-->
+      </select>
+      <input type="text" name="subject" placeholder="Subject" aria-label="Subject" maxlength="200">
+      <textarea name="message" placeholder="Your message" aria-label="Your message" maxlength="5000" required></textarea>
+      <!-- Anti-robot trap field: invisible to humans, must stay empty -->
+      <div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Do not fill in<input type="text" name="hp" tabindex="-1" autocomplete="off"></label></div>
+      <button type="submit">Send message</button>
+    </form>
+    <div id="contactMsg" class="dev-notice" role="status" aria-live="polite" hidden></div>
+  </div>
+</div>

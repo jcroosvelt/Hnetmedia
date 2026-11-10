@@ -30,7 +30,7 @@ async function subscribe(req, res) {
   if (body.consent !== true && body.consent !== "true" && body.consent !== "on") {
     throw new HttpError(400, "Vous devez accepter de recevoir la newsletter pour vous inscrire.", { field: "consent" });
   }
-  const lang = ["fr", "en", "ht"].includes(body.lang) ? body.lang : "fr";
+  const lang = ["fr", "en"].includes(body.lang) ? body.lang : "fr";
 
   const ipKey = fingerprint(clientIp(req));
   await limit(`nl:ip:${ipKey}`, 10, 3600, "Trop de demandes d'inscription. Réessayez dans une heure.");

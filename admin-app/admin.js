@@ -8,7 +8,7 @@
   var S = { csrf: null, user: null, perms: new Set(), meta: null };
   var cleanup = null; // fonction appelée en quittant une vue (éditeur, minuteurs…)
   var guard = null; // fonction () => true si on peut quitter la vue
-  var LANGS = [["fr", "Français"], ["en", "English"], ["ht", "Kreyòl"]];
+  var LANGS = [["fr", "Français"], ["en", "English"]];
   var STATUS = { brouillon: "Brouillon", programme: "Programmé", publie: "Publié", archive: "Archivé" };
   var ROLES = { administrateur: "Administrateur", redacteur_en_chef: "Rédacteur en chef", editeur: "Éditeur", journaliste: "Journaliste", contributeur: "Contributeur", commercial: "Commercial" };
   var TYPES = [["information", "Information"], ["opinion", "Opinion"], ["tribune", "Tribune"], ["editorial", "Éditorial"], ["analyse", "Analyse"]];
@@ -283,6 +283,7 @@
     if (can("author.manage")) t.push(["#/equipe", "Équipe", "person", "Contenu"]);
     if (can("partner.manage")) t.push(["#/partenaires", "Partenaires", "star", "Contenu"]);
     if (can("job.manage")) t.push(["#/offres", "Offres d'emploi", "case", "Contenu"]);
+    if (can("taxonomy.manage")) t.push(["#/rubriques", "Rubriques", "grid", "Contenu"]);
     if (can("contact.read")) t.push(["#/messages", "Messages", "mail", "Lecteurs"]);
     if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés", "users", "Lecteurs"]);
     if (can("stats.read")) t.push(["#/stats", "Statistiques", "chart", "Lecteurs"]);
@@ -356,7 +357,8 @@
     else if (parts[0] === "equipe" && can("author.manage")) run = function () { return renderTeam(view); };
     else if (parts[0] === "partenaires" && can("partner.manage")) run = function () { return renderPartners(view); };
     else if (parts[0] === "offres" && can("job.manage")) run = function () { return renderJobs(view); };
-    else if (parts[0] === "pages" && parts[1] && can("settings.manage")) run = function () { return renderPageEdit(view, parts[1]); };
+    else if (parts[0] === "rubriques" && can("taxonomy.manage")) run = function () { return renderCategories(view); };
+    else if (parts[0] === "pages" && parts[1] && parts[2] && can("settings.manage")) run = function () { return renderPageEdit(view, parts[1], parts[2]); };
     else if (parts[0] === "pages" && can("settings.manage")) run = function () { return renderPages(view); };
     else if (parts[0] === "reglages" && can("settings.manage")) run = function () { return renderSettings(view); };
     else if (parts[0] === "comptes") run = function () { return renderUsers(view); };
@@ -797,7 +799,7 @@
         f.seoTitle.value = t.seoTitle; f.seoDesc.value = t.seoDescription; f.reviewed.checked = t.reviewed;
         if (ed) ed.setHTML(t.content);
         var orig = l === origLang;
-        langHint.textContent = orig ? "" : (t.title ? "Traduction : elle n'est publiée sur le site qu'une fois relue et validée. Aucune traduction automatique." : "Pas encore de traduction : saisissez un titre et un texte pour la créer. Elle ne sera publiée qu'une fois relue et validée.");
+        langHint.textContent = orig ? "" : (t.title ? "Version anglaise : elle est publiée sur la version anglaise du site (/en) une fois relue et validée par un humain. Aucune traduction automatique." : "Pas encore de version anglaise : saisissez un titre, un chapeau et un texte pour la créer. Elle ne sera publiée sur /en qu'une fois relue et validée.");
         sheet.classList.toggle("wd-translating", !orig);
         Array.prototype.forEach.call(langSeg.children, function (b) { var on = b.getAttribute("data-l") === l; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
         autosize(f.title); autosize(f.excerpt); refreshChrome();
@@ -1365,7 +1367,7 @@
             var acts = h("td", { style: "white-space:nowrap" },
               h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Modifier", onclick: function () { edit(it); } }), " ");
             (cfg.extra ? cfg.extra(it, load) : []).forEach(function (b) { acts.appendChild(b); acts.appendChild(document.createTextNode(" ")); });
-            acts.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Supprimer", onclick: function () { remove(it); } }));
+            if (cfg.removeMsg) acts.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Supprimer", onclick: function () { remove(it); } }));
             return h("tr", null, cfg.cols.map(function (c) { return h("td", { "data-l": c[0], text: String(c[1](it) == null ? "" : c[1](it)) }); }).concat([acts]));
           }))));
       });
@@ -1374,7 +1376,7 @@
       ask(it ? "Modifier" : cfg.newLabel.replace(/^\+ /, ""), cfg.fields(it), { submit: "Enregistrer", intro: cfg.intro }).then(function (v) {
         if (!v) return;
         var body = cfg.body(v, it);
-        api(it ? "PUT" : "POST", cfg.path + (it ? "/" + it.id : ""), body)
+        api(it ? "PUT" : "POST", cfg.path + (it ? "/" + it[cfg.id || "id"] : ""), body)
           .then(function () { toast("Enregistré."); load(); })
           .catch(function (x) { toast(x.message, true); });
       });
@@ -1386,7 +1388,7 @@
       });
     }
     clear(view);
-    view.appendChild(heading(cfg.title, cfg.sub, h("button", { type: "button", class: "hn-btn hn-btn-primary", text: cfg.newLabel, onclick: function () { edit(null); } })));
+    view.appendChild(heading(cfg.title, cfg.sub, cfg.newLabel ? h("button", { type: "button", class: "hn-btn hn-btn-primary", text: cfg.newLabel, onclick: function () { edit(null); } }) : null));
     view.appendChild(h("div", { class: "update-note", style: "margin-bottom:14px", text: S.meta && S.meta.siteRebuild
       ? "Chaque changement met le site à jour automatiquement (1 à 2 minutes)."
       : "La mise à jour automatique du site n'est pas configurée : les changements n'apparaîtront qu'au prochain déploiement." }));
@@ -1423,6 +1425,25 @@
           } })];
         },
         removeMsg: function (a) { return "Supprimer la fiche de " + a.name + " ? Impossible tant que cette personne signe des articles."; },
+      });
+    });
+  }
+
+  function renderCategories(view) {
+    return ensureMeta().then(function () {
+      return renderList(view, {
+        title: "Rubriques", sub: "Noms et descriptions des rubriques, en français et en anglais, et leur ordre dans le menu. L'adresse de chaque rubrique ne change jamais.",
+        path: "categories", newLabel: null, empty: "Aucune rubrique.", id: "slug",
+        intro: "Laissez le nom anglais vide pour reprendre le nom français sur la version anglaise.",
+        cols: [["Ordre", function (c) { return c.position; }], ["Français", function (c) { return c.label; }], ["English", function (c) { return c.labelEn || "—"; }], ["Adresse", function (c) { return "/" + c.slug; }]],
+        fields: function (c) {
+          return [{ name: "label", label: "Nom (français)", required: true, max: 40, value: c.label },
+            { name: "labelEn", label: "Nom (anglais)", max: 40, value: c.labelEn || "" },
+            { name: "description", label: "Description (français)", type: "textarea", max: 300, value: c.description || "" },
+            { name: "descriptionEn", label: "Description (anglais)", type: "textarea", max: 300, value: c.descriptionEn || "" },
+            { name: "position", label: "Ordre dans le menu (0 = en premier)", type: "number", min: 0, value: String(c.position) }];
+        },
+        body: function (v) { return { label: v.label, labelEn: v.labelEn, description: v.description, descriptionEn: v.descriptionEn, position: v.position }; },
       });
     });
   }
@@ -1502,37 +1523,49 @@
         box.appendChild(h("p", { class: "hn-hint", text: "Les 60 images les plus récentes. Une image utilisée dans un article, une photo d'équipe ou un partenaire ne peut pas être supprimée." }));
       });
     }
+    function cleanupBtn() {
+      return h("button", { type: "button", class: "hn-btn hn-btn-ghost", text: "Supprimer les images inutilisées", onclick: function () {
+        api("GET", "media/unused").then(function (u) {
+          if (!u.count) return toast("Aucune image inutilisée de plus de 24 heures.");
+          confirmBox(u.count + " image" + (u.count > 1 ? "s" : "") + " (" + size(u.bytes) + ") ne sert" + (u.count > 1 ? "ent" : "") + " nulle part (ni article, ni photo d'équipe, ni partenaire) et ont plus de 24 heures. Elles seront supprimées définitivement.", { title: "Supprimer les images inutilisées ?", danger: true, confirm: "Supprimer", typed: "SUPPRIMER" }).then(function (ok) {
+            if (!ok) return;
+            api("POST", "media/cleanup", {}).then(function (r) { toast(r.deleted + " image" + (r.deleted > 1 ? "s supprimées" : " supprimée") + "."); load(); }).catch(function (x) { toast(x.message, true); });
+          });
+        }).catch(function (x) { toast(x.message, true); });
+      } });
+    }
     clear(view);
-    view.appendChild(heading("Médias", "Images téléversées depuis l'éditeur d'articles. Vous ne voyez que les vôtres, sauf droit de gestion de la médiathèque."));
+    view.appendChild(heading("Médias", "Images téléversées depuis l'éditeur d'articles. Vous ne voyez que les vôtres, sauf droit de gestion de la médiathèque.", can("media.manage") ? cleanupBtn() : null));
     view.appendChild(box);
     return load();
   }
 
-  /* ───────── Pages fixes (À propos, Charte, Publicité, CGU, Confidentialité, Cookies) ───────── */
+  /* ───────── Pages fixes (À propos, Charte, Publicité, CGU, Confidentialité, Cookies), en français et en anglais ───────── */
   function renderPages(view) {
     return ensureMeta().then(function () { return api("GET", "pages"); }).then(function (r) {
       clear(view);
-      view.appendChild(heading("Pages du site", "Modifiez le texte des pages fixes avec le même éditeur que les articles. Tant qu'une page n'est pas modifiée, le site garde son texte d'origine."));
+      view.appendChild(heading("Pages du site", "Modifiez le texte des pages fixes, en français et en anglais, avec le même éditeur que les articles. Tant qu'une version n'est pas modifiée, le site garde son texte d'origine."));
       view.appendChild(h("div", { class: "update-note", style: "margin-bottom:14px", text: S.meta && S.meta.siteRebuild
         ? "Chaque enregistrement met le site à jour automatiquement (1 à 2 minutes)."
         : "La mise à jour automatique du site n'est pas configurée : les changements n'apparaîtront qu'au prochain déploiement." }));
+      var LBL = { fr: "Français", en: "English" };
       view.appendChild(h("table", { class: "hn-table stack" },
-        h("thead", null, h("tr", null, ["Page", "Adresse", "État", "Modifiée", ""].map(function (c) { return h("th", { text: c }); }))),
+        h("thead", null, h("tr", null, ["Page", "Version française", "Version anglaise"].map(function (c) { return h("th", { text: c }); }))),
         h("tbody", null, r.items.map(function (p) {
-          return h("tr", null,
-            h("td", { "data-l": "Page" }, h("a", { class: "hn-link", href: "#/pages/" + p.slug, text: p.title })),
-            h("td", { "data-l": "Adresse", class: "hn-muted", text: "/" + p.slug }),
-            h("td", { "data-l": "État", text: p.custom ? "Modifiée" : "Texte d'origine" }),
-            h("td", { "data-l": "Modifiée", class: "hn-muted", text: p.updatedAt ? fmt(p.updatedAt) : "—" }),
-            h("td", null, h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "#/pages/" + p.slug, text: "Modifier" }), " ",
-              h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "/" + p.slug, target: "_blank", rel: "noopener", text: "Voir" })));
+          function cell(lang) {
+            var v = p.versions[lang];
+            return h("td", { "data-l": LBL[lang] }, h("div", { style: "margin-bottom:6px" }, h("span", { text: v.custom ? "Modifiée" : "Texte d'origine" }), v.updatedAt ? h("span", { class: "hn-muted", text: " · " + fmt(v.updatedAt) }) : null),
+              h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "#/pages/" + p.slug + "/" + lang, text: "Modifier" }), " ",
+              h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: (lang === "en" ? "/en/" : "/") + p.slug, target: "_blank", rel: "noopener", text: "Voir" }));
+          }
+          return h("tr", null, h("td", { "data-l": "Page" }, h("strong", { text: p.defaultTitle }), h("div", { class: "hn-muted", text: "/" + p.slug })), cell("fr"), cell("en"));
         }))));
     });
   }
 
   // Texte d'origine d'une page : lu sur la page publique (même site), mis en forme pour l'éditeur.
-  function defaultPageHtml(slug) {
-    return fetch("/" + slug + ".html", { credentials: "omit" }).then(function (r) {
+  function defaultPageHtml(slug, lang) {
+    return fetch((lang === "en" ? "/en/" : "/") + slug + ".html", { credentials: "omit" }).then(function (r) {
       if (!r.ok) throw new Error("Texte d'origine introuvable.");
       return r.text();
     }).then(function (html) {
@@ -1555,10 +1588,12 @@
     });
   }
 
-  function renderPageEdit(view, slug) {
-    return Promise.all([ensureMeta(), api("GET", "pages/" + encodeURIComponent(slug)), loadEditor()]).then(function (res) {
+  function renderPageEdit(view, slug, lang) {
+    if (lang !== "fr" && lang !== "en") { location.hash = "#/pages"; return Promise.resolve(); }
+    var q = "?lang=" + lang;
+    return Promise.all([ensureMeta(), api("GET", "pages/" + encodeURIComponent(slug) + q), loadEditor()]).then(function (res) {
       var pg = res[1].page;
-      return (pg.content !== null ? Promise.resolve(pg.content) : defaultPageHtml(slug)).then(function (startHtml) {
+      return (pg.content !== null ? Promise.resolve(pg.content) : defaultPageHtml(slug, lang)).then(function (startHtml) {
         var dirty = false, ed = null;
         var title = h("input", { id: "pg-title", class: "wd-titlein", type: "text", maxlength: 120, value: pg.title, "aria-label": "Titre de la page", style: "height:auto" });
         var desc = h("textarea", { id: "pg-desc", rows: 2, maxlength: 300, "aria-label": "Description pour les moteurs de recherche", placeholder: "Description pour les moteurs de recherche (facultatif)", class: "wd-excerpt" });
@@ -1567,14 +1602,14 @@
         var saveState = h("span", { class: "wd-savestate", "aria-live": "polite" });
         var statsEl = h("span", { class: "wd-stats", "aria-live": "polite" });
         var ribbonEl = h("div", { class: "wd-ribbon" });
-        var badge = h("span", { class: "wd-status", text: pg.custom ? "Modifiée" : "Texte d'origine" });
+        var badge = h("span", { class: "wd-status", text: (lang === "en" ? "English · " : "Français · ") + (pg.custom ? "Modifiée" : "Texte d'origine") });
         function mark() { dirty = true; saveBtn.disabled = false; saveState.textContent = "Modifications non enregistrées"; }
         var saveBtn = h("button", { type: "button", class: "wd-tbtn wd-save", disabled: true, onclick: save }, h("span", { class: "wd-tlbl", text: "Enregistrer" }));
         var resetBtn = h("button", { type: "button", class: "wd-tbtn", hidden: !pg.custom, onclick: reset }, h("span", { class: "wd-tlbl", text: "Rétablir l'original" }));
         var titleBar = h("header", { class: "wd-title" },
           h("a", { class: "wd-back", href: "#/pages", "aria-label": "Retour à la liste des pages", title: "Retour aux pages", html: pageIcon("back", 20) }),
           h("div", { class: "wd-doc" }, h("span", { class: "wd-docname", text: pg.defaultTitle }), badge),
-          h("div", { class: "wd-actions" }, saveBtn, resetBtn, h("a", { class: "wd-tbtn", href: "/" + slug, target: "_blank", rel: "noopener" }, h("span", { class: "wd-tlbl", text: "Voir la page" }))));
+          h("div", { class: "wd-actions" }, saveBtn, resetBtn, h("a", { class: "wd-tbtn", href: (lang === "en" ? "/en/" : "/") + slug, target: "_blank", rel: "noopener" }, h("span", { class: "wd-tlbl", text: "Voir la page" }))));
         var sheet = h("article", { class: "wd-sheet" }, title, desc, h("hr", { class: "wd-rule" }), contentEl);
         var wd = h("div", { class: "wd" }, titleBar, ribbonEl, h("div", { class: "wd-body" }, h("div", { class: "wd-canvas" }, sheet)), h("footer", { class: "wd-statusbar" }, statsEl, saveState));
         clear(view); view.appendChild(wd);
@@ -1588,8 +1623,8 @@
         title.addEventListener("input", mark); desc.addEventListener("input", mark);
         function save() {
           saveBtn.disabled = true; saveState.textContent = "Enregistrement…";
-          api("PUT", "pages/" + encodeURIComponent(slug), { title: title.value, description: desc.value, content: ed.getHTML() }).then(function (r) {
-            dirty = false; pg = r.page; badge.textContent = "Modifiée";
+          api("PUT", "pages/" + encodeURIComponent(slug) + q, { title: title.value, description: desc.value, content: ed.getHTML() }).then(function (r) {
+            dirty = false; pg = r.page; badge.textContent = (lang === "en" ? "English · " : "Français · ") + "Modifiée";
             saveState.textContent = "Enregistré à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
             toast(S.meta && S.meta.siteRebuild ? "Page enregistrée. Le site se met à jour (1 à 2 minutes)." : "Page enregistrée. Mise à jour automatique du site non configurée.");
             resetBtn.hidden = false;
@@ -1598,7 +1633,7 @@
         function reset() {
           confirmBox("La page retrouvera son texte d'origine ; votre version modifiée sera supprimée.", { title: "Rétablir le texte d'origine ?", confirm: "Rétablir", danger: true }).then(function (ok) {
             if (!ok) return;
-            api("DELETE", "pages/" + encodeURIComponent(slug)).then(function () { dirty = false; toast("Texte d'origine rétabli."); location.hash = "#/pages"; }).catch(function (x) { toast(x.message, true); });
+            api("DELETE", "pages/" + encodeURIComponent(slug) + q).then(function () { dirty = false; toast("Texte d'origine rétabli."); location.hash = "#/pages"; }).catch(function (x) { toast(x.message, true); });
           });
         }
         function onKey(e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (!saveBtn.disabled) save(); } }
@@ -1635,6 +1670,9 @@
           field("description", "Description du site", cur.description, { area: true, max: 300 })]),
         card("Pied de page", "Texte affiché sous le logo en bas de chaque page. Laissez vide pour garder le texte d'origine.", [
           field("footerText", "Texte du pied de page", cur.footerText, { area: true, max: 300 })]),
+        card("Version anglaise du site", "Textes de la version anglaise (/en). Laissez vide pour utiliser la traduction d'origine fournie avec le site.", [
+          field("taglineEn", "Slogan (anglais)", cur.taglineEn, { max: 120 }), field("descriptionEn", "Description du site (anglais)", cur.descriptionEn, { area: true, max: 300 }),
+          field("footerTextEn", "Texte du pied de page (anglais)", cur.footerTextEn, { area: true, max: 300 })]),
         card("Réseaux sociaux", "Seuls les réseaux renseignés apparaissent dans le pied de page. Laissez vide pour ne rien afficher.",
           SOC.map(function (c) { return field("soc-" + c[0], c[1] + " (https://…)", cur.social[c[0]], { type: "url", max: 300 }); })),
         card("Mentions légales", "Informations juridiques réelles de l'éditeur et de l'hébergeur. Tant qu'elles manquent, la page publique affiche un avis « incomplet ».",
@@ -1647,7 +1685,7 @@
         var social = {}, legal = {};
         SOC.forEach(function (c) { social[c[0]] = F["soc-" + c[0]].value.trim(); });
         LEG.forEach(function (c) { legal[c[0]] = F["leg-" + c[0]].value.trim(); });
-        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, footerText: F.footerText.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
+        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, footerText: F.footerText.value, taglineEn: F.taglineEn.value, descriptionEn: F.descriptionEn.value, footerTextEn: F.footerTextEn.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
           .then(function () { toast("Réglages enregistrés."); })
           .catch(function (x) { err.textContent = x.message; err.hidden = false; });
       });

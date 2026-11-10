@@ -1,0 +1,22 @@
+<div class="wrap">
+  <div class="breadcrumb"><a href="/">Home</a> / Search</div>
+  <div class="page-banner">
+    <div class="page-banner-icon">🔍</div>
+    <div>
+      <div class="page-banner-title">Search</div>
+      <div class="page-banner-desc">Find an article by keyword, section or tag.</div>
+    </div>
+  </div>
+  <div class="search-filters">
+    <input type="text" id="searchQ" placeholder="Search for a keyword…" style="flex:1;min-width:220px;font-family:'Inter',sans-serif;font-size:13.5px;padding:9px 14px;border:1px solid var(--gray-lt);border-radius:var(--r-sm)">
+    <select id="filterCategory"><option value="">All sections</option></select>
+    <select id="filterTag"><option value="">All tags</option></select>
+    <select id="filterSort">
+      <option value="date-desc">Newest first</option>
+      <option value="date-asc">Oldest first</option>
+    </select>
+  </div>
+  <div class="search-result-count" id="searchResultCount"></div>
+  <div class="news-grid" id="searchResults"></div>
+</div>
+<script src="/assets/search.js" defer></script>

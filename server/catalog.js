@@ -179,13 +179,36 @@ const jobs = {
   },
 };
 
+/* ═════════ RUBRIQUES (libellés FR/EN, description, ordre) ═════════ */
+const categories = {
+  async list() {
+    return getDb().query(`SELECT slug, label, label_en AS "labelEn", description, description_en AS "descriptionEn", icon, position FROM categories ORDER BY position, slug`);
+  },
+  // L'adresse (slug) d'une rubrique ne change jamais : elle sert d'URL et de lien dans les articles.
+  async update(s, slug, b) {
+    if (!/^[a-z0-9-]{1,60}$/.test(slug)) throw new HttpError(404, "Rubrique introuvable.");
+    const label = text(b.label, 40, "Nom (français)", { required: true });
+    if (label.length < 2) throw new HttpError(400, "Le nom de la rubrique doit faire au moins 2 caractères.");
+    const pos = b.position === undefined || b.position === "" ? 0 : parseInt(b.position, 10);
+    if (!Number.isInteger(pos) || pos < 0 || pos > 99) throw new HttpError(400, "L'ordre d'affichage doit être un nombre entre 0 et 99.");
+    const r = await getDb().query(
+      `UPDATE categories SET label = $2, label_en = $3, description = $4, description_en = $5, position = $6 WHERE slug = $1 RETURNING slug`,
+      [slug, label, text(b.labelEn, 40, "Nom (anglais)"), text(b.description, 300, "Description (français)"), text(b.descriptionEn, 300, "Description (anglais)"), pos]);
+    if (!r.length) throw new HttpError(404, "Rubrique introuvable.");
+    await audit(s.user.id, "rubrique.modification", "category", slug);
+    await changed(`rubrique ${slug}`);
+    return { slug };
+  },
+};
+
 /* ═════════ RÉGLAGES DU SITE ═════════ */
 const settings = {
   async get() {
-    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','footerText','social','legal','contactCategories')");
+    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','taglineEn','descriptionEn','footerText','footerTextEn','social','legal','contactCategories')");
     const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     return {
       siteName: m.siteName || "", tagline: m.tagline || "", description: m.description || "", footerText: typeof m.footerText === "string" ? m.footerText : "",
+      taglineEn: typeof m.taglineEn === "string" ? m.taglineEn : "", descriptionEn: typeof m.descriptionEn === "string" ? m.descriptionEn : "", footerTextEn: typeof m.footerTextEn === "string" ? m.footerTextEn : "",
       social: Object.assign(Object.fromEntries(SOCIAL_KEYS.map((k) => [k, ""])), m.social || {}),
       legal: Object.assign(Object.fromEntries(LEGAL_KEYS.map((k) => [k, ""])), m.legal || {}),
       contactCategories: Array.isArray(m.contactCategories) ? m.contactCategories : [],
@@ -196,6 +219,8 @@ const settings = {
     const tagline = text(b.tagline, 120, "Slogan", { required: true });
     const description = text(b.description, 300, "Description du site", { required: true });
     const footerText = text(b.footerText, 300, "Texte du pied de page");
+    // Version anglaise (facultative) : vide = traduction d'origine du site.
+    const en = { taglineEn: text(b.taglineEn, 120, "Slogan (anglais)"), descriptionEn: text(b.descriptionEn, 300, "Description (anglais)"), footerTextEn: text(b.footerTextEn, 300, "Pied de page (anglais)") };
     const social = socialMap(b.social);
     const legal = {};
     for (const k of LEGAL_KEYS) { const t = text(b.legal && b.legal[k], k.endsWith("Address") ? 300 : 200, "Mentions légales"); if (t) legal[k] = t; }
@@ -210,12 +235,13 @@ const settings = {
     }
     const up = (k, val) => ({ text: `INSERT INTO site_settings (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, params: [k, JSON.stringify(val)] });
     // Texte du pied de page facultatif : vide = texte d'origine du site (la ligne est supprimée).
-    const footerQ = footerText ? up("footerText", footerText) : { text: "DELETE FROM site_settings WHERE key = 'footerText'", params: [] };
-    await getDb().transaction([up("siteName", siteName), up("tagline", tagline), up("description", description), footerQ, up("social", social), up("legal", legal), up("contactCategories", cats)]);
+    const optional = (k, val) => (val ? up(k, val) : { text: "DELETE FROM site_settings WHERE key = $1", params: [k] });
+    await getDb().transaction([up("siteName", siteName), up("tagline", tagline), up("description", description), optional("footerText", footerText),
+      optional("taglineEn", en.taglineEn), optional("descriptionEn", en.descriptionEn), optional("footerTextEn", en.footerTextEn), up("social", social), up("legal", legal), up("contactCategories", cats)]);
     await audit(s.user.id, "reglages.modification", "settings", null, { reseaux: Object.keys(social).length, mentions: Object.keys(legal).length });
     await changed("réglages du site");
     return this.get();
   },
 };
 
-module.exports = { authors, partners, jobs, settings, SOCIAL_KEYS, LEGAL_KEYS, MEDIA_RE };
+module.exports = { authors, partners, jobs, categories, settings, SOCIAL_KEYS, LEGAL_KEYS, MEDIA_RE };

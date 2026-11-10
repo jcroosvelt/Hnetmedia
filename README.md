@@ -39,4 +39,4 @@ Vercel (Settings → Environment Variables) et dans `.env.local` (ignoré par gi
 | Mise à jour du site à chaque publication | Prête côté code ; il reste à créer le Deploy Hook Vercel (`VERCEL_DEPLOY_HOOK_URL`) |
 | Publication à heure programmée | **Actif** une fois `CRON_SECRET` défini dans Vercel : vérification quotidienne incluse ; pour publier à quelques minutes près, un service externe doit appeler `/api/scheduled` toutes les 5 min (voir `CLAUDE.md`) |
 | Images | **Actif** : téléversement depuis l'appareil (réduit automatiquement), médiathèque, ou adresse https ; stockées dans Neon. Pas encore de suppression d'images |
-| Contenu éditorial en anglais / kreyòl | Stocké et relu dans l'éditeur, **pas encore publié** sur le site |
+| Version anglaise du site (`/en`) | **Active** : interface traduite, articles anglais publiés une fois relus et validés dans l'éditeur, pages fixes et rubriques modifiables en anglais. Le créole n'est plus proposé |

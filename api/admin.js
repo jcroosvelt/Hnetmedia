@@ -278,6 +278,9 @@ async function statsRoute(req, res, parts) {
 async function mediaRoute(req, res, parts) {
   const id = parts[1];
   if (parts[2]) throw new HttpError(404, "Route inconnue.");
+  // Nettoyage des images inutilisées : réservé à la gestion de la médiathèque
+  if (id === "unused" && req.method === "GET") { await auth.requireAuth(req, "media.manage"); return send(res, 200, { ok: true, ...(await media.unused()) }); }
+  if (id === "cleanup" && req.method === "POST") { const sm = await auth.requireAuth(req, "media.manage"); return send(res, 200, await media.cleanup(sm)); }
   const s = await auth.requireAuth(req, "media.upload");
   if (!id && req.method === "GET") return send(res, 200, { ok: true, items: await media.list(s) });
   if (!id && req.method === "POST") return send(res, 201, { ok: true, media: await media.upload(s, req) });
@@ -303,10 +306,19 @@ async function pagesRoute(req, res, parts) {
   const slug = parts[1];
   if (parts[2]) throw new HttpError(404, "Route inconnue.");
   const s = await auth.requireAuth(req, "settings.manage");
+  const lang = getQuery(req).lang || "fr";
   if (!slug && req.method === "GET") return send(res, 200, { ok: true, items: await pages.list() });
-  if (slug && req.method === "GET") return send(res, 200, { ok: true, page: await pages.get(slug) });
-  if (slug && req.method === "PUT") return send(res, 200, { ok: true, page: await pages.save(s, slug, await readBody(req)) });
-  if (slug && req.method === "DELETE") return send(res, 200, await pages.reset(s, slug));
+  if (slug && req.method === "GET") return send(res, 200, { ok: true, page: await pages.get(slug, lang) });
+  if (slug && req.method === "PUT") return send(res, 200, { ok: true, page: await pages.save(s, slug, lang, await readBody(req)) });
+  if (slug && req.method === "DELETE") return send(res, 200, await pages.reset(s, slug, lang));
+  throw new HttpError(405, "Méthode non autorisée.");
+}
+async function categoriesRoute(req, res, parts) {
+  const slug = parts[1];
+  if (parts[2]) throw new HttpError(404, "Route inconnue.");
+  const s = await auth.requireAuth(req, "taxonomy.manage");
+  if (!slug && req.method === "GET") return send(res, 200, { ok: true, items: await catalog.categories.list() });
+  if (slug && req.method === "PUT") return send(res, 200, { ok: true, ...(await catalog.categories.update(s, slug, await readBody(req))) });
   throw new HttpError(405, "Méthode non autorisée.");
 }
 async function settingsRoute(req, res, parts) {
@@ -395,6 +407,7 @@ const ROUTES = {
   jobs: crud("job.manage", catalog.jobs),
   settings: settingsRoute,
   pages: pagesRoute,
+  categories: categoriesRoute,
 };
 
 module.exports = handler(["GET", "POST", "PUT", "PATCH", "DELETE"], async (req, res) => {

@@ -29,6 +29,18 @@
     {
       "source": "/tag/:slug",
       "destination": "/tag/:slug.html"
+    },
+    {
+      "source": "/en/article/:slug",
+      "destination": "/en/article/:slug.html"
+    },
+    {
+      "source": "/en/auteur/:slug",
+      "destination": "/en/auteur/:slug.html"
+    },
+    {
+      "source": "/en/tag/:slug",
+      "destination": "/en/tag/:slug.html"
     }
   ],
   "headers": [

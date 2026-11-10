@@ -74,6 +74,41 @@
   }, { threshold: 0.08 });
   document.querySelectorAll(".reveal").forEach(function (el) { revObs.observe(el); });
 
+
+  /* ── MESURE DES LECTURES (sans donnée personnelle) ──
+     Une lecture = une ouverture d'article. Rien n'est envoyé si le visiteur a activé « ne pas suivre » (DNT / GPC) ;
+     le serveur ignore en plus les robots et les rechargements rapprochés. Aucun cookie, aucune IP conservée. */
+  (function trackView() {
+    if (!/^\/article\/[a-z0-9-]+(\.html)?$/.test(location.pathname)) return;
+    if (navigator.doNotTrack === "1" || navigator.globalPrivacyControl) return;
+    try {
+      var blob = new Blob([JSON.stringify({ path: location.pathname })], { type: "application/json" });
+      if (!(navigator.sendBeacon && navigator.sendBeacon("/api/views", blob))) {
+        fetch("/api/views", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: location.pathname }), keepalive: true });
+      }
+    } catch (e) { /* mesure facultative */ }
+  })();
+
+  /* ── « LES PLUS LUS » : classement des lectures réellement mesurées ; la section reste masquée tant qu'il n'y en a pas ── */
+  (function mostRead() {
+    var box = document.getElementById("mostRead"), list = document.getElementById("mostReadList");
+    if (!box || !list || !window.fetch) return;
+    fetch("/api/views?top=lus&limit=5", { credentials: "omit" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.items || !d.items.length) return;
+        d.items.forEach(function (it, i) {
+          var li = document.createElement("li"), a = document.createElement("a"), n = document.createElement("span"), t = document.createElement("span");
+          n.className = "mr-n"; n.textContent = String(i + 1);
+          t.className = "mr-t"; t.textContent = it.title;
+          a.href = it.url + ".html"; a.appendChild(n); a.appendChild(t);
+          li.appendChild(a); list.appendChild(li);
+        });
+        box.hidden = false;
+      })
+      .catch(function () { /* classement facultatif */ });
+  })();
+
   /* ── MOUVEMENT RÉDUIT ── */
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     document.querySelectorAll(".ticker-tape").forEach(function (t) { t.style.animation = "none"; });

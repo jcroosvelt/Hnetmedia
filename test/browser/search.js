@@ -12,7 +12,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     const ctx = await browser.newContext({ viewport: { width: w, height: 700 }, baseURL: base, hasTouch: w < 800, isMobile: w < 800 }); const page = await ctx.newPage();
     await page.goto("/"); await page.waitForSelector("#searchInput");
     const r = await page.evaluate(() => { const q = (s) => document.querySelector(s).getBoundingClientRect();
-      const items = [".logo-link", ".search-box", ".lang-sw"].map((s) => q(s)); const sub = getComputedStyle(document.querySelector(".sub-btn")).display !== "none" ? q(".sub-btn") : null;
+      const items = [".logo-link", ".search-box", ".lang-sw"].map((s) => q(s)); const sb = document.querySelector(".sub-btn"); const sub = sb && getComputedStyle(sb).display !== "none" ? q(".sub-btn") : null; // bouton retiré tant que la newsletter n'est pas active
       const maxRight = Math.max(...items.map((b) => b.right), sub ? sub.right : 0);
       return { maxRight: Math.round(maxRight), champ: Math.round(q("#searchInput").width), W: innerWidth, deborde: document.documentElement.scrollWidth > innerWidth, chevauche: q(".logo-link").right > q(".search-box").left + 1 }; });
     ok(r.maxRight <= r.W && !r.deborde && !r.chevauche && r.champ >= 90, `${w}px : bord droit ${r.maxRight} ≤ ${r.W}, champ de recherche ${r.champ}px, pas de chevauchement`);

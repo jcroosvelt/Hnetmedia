@@ -129,11 +129,14 @@ function init(content) {
     : "");
 
   // Ticker : alimenté par les articles marqués "urgent" ; sinon message neutre honnête.
+  // Bandeau « urgent » : uniquement s'il existe de vraies alertes (sinon aucun bandeau, jamais de message de remplissage).
   const urgentArticles = publishedArticles.filter((a) => a.urgent);
-  const tickerItems = urgentArticles.length
-    ? urgentArticles.map((a) => `<a href="/article/${a.slug}.html" class="ticker-item">◆ ${escAttr(a.title)}</a>`).join("")
-    : `<span class="ticker-item">◆ Bienvenue sur HNet Media — aucune alerte urgente pour le moment</span>`;
-  headerHtml = headerHtml.replace("<!--TICKER_ITEMS-->", tickerItems + tickerItems); // dupliqué pour un défilement continu
+  if (urgentArticles.length) {
+    const tickerItems = urgentArticles.map((a) => `<a href="/article/${a.slug}.html" class="ticker-item">◆ ${escAttr(a.title)}</a>`).join("");
+    headerHtml = headerHtml.replace("<!--TICKER_ITEMS-->", () => tickerItems + tickerItems); // dupliqué pour un défilement continu
+  } else {
+    headerHtml = headerHtml.replace(/<!--TICKER-->[\s\S]*?<!--\/TICKER-->\s*/, "");
+  }
 
   orgLd = {
     "@context": "https://schema.org",
@@ -222,15 +225,19 @@ function articleBadges(a) {
   return b;
 }
 
+// Fond d'une vignette : image de l'article, sinon le logo sur le bleu marine du site (jamais d'arc-en-ciel de rubriques).
+function coverStyle(a) {
+  return a.mainImage && a.mainImage.url
+    ? `background:url('${escAttr(a.mainImage.url)}') center/cover`
+    : "background:var(--navy) url('/assets/logo.png') center/44% no-repeat";
+}
+
 function newsCard(a) {
   const cat = catBySlug[a.category] || { label: a.category, tagClass: "tag", color: "#0A1F44" };
-  const bg = a.mainImage && a.mainImage.url
-    ? `url('${escAttr(a.mainImage.url)}') center/cover`
-    : `linear-gradient(135deg,#0A1F44,${cat.color})`;
   return `
   <a class="news-card reveal" href="/article/${a.slug}.html">
     <div class="nc-img">
-      <div class="nc-img-bg" style="background:${bg};height:100%"></div>
+      <div class="nc-img-bg" style="${coverStyle(a)};height:100%"></div>
       <span class="${cat.tagClass} nc-badge">${escAttr(cat.label)}</span>
     </div>
     <h3 class="nc-title">${escAttr(a.title)}</h3>
@@ -258,81 +265,103 @@ function breadcrumbLd(items) {
 function buildHome() {
   const featured = publishedArticles.find((a) => a.featured) || publishedArticles[0];
   const side = publishedArticles.filter((a) => a !== featured).slice(0, 4);
-  const latest = publishedArticles.slice(0, 9);
+  const shown = new Set([featured, ...side]);
+  const latest = publishedArticles.filter((a) => !shown.has(a)).slice(0, 6);
   const opinions = publishedArticles.filter((a) => a.category === "opinions").slice(0, 4);
+  const meta = (a) => `${escAttr(a.author ? a.author.name : "Rédaction")} · ${formatDateFR(a.publishedAt)}`;
+  const chips = `<div class="cat-chips">${categories.map((c) => `<a class="cat-chip" href="/${c.slug}.html">${escAttr(c.label)}</a>`).join("")}</div>`;
 
   let heroHtml;
   if (featured) {
-    const cat = catBySlug[featured.category] || { label: featured.category, color: "#0A1F44" };
-    const bg = featured.mainImage && featured.mainImage.url
-      ? `url('${escAttr(featured.mainImage.url)}') center/cover`
-      : `linear-gradient(135deg,#0A1F44,${cat.color})`;
+    const cat = catBySlug[featured.category] || { label: featured.category };
     heroHtml = `
-    <div class="hero">
-      <a class="hero-main" href="/article/${featured.slug}.html" style="background:${bg};display:block;text-decoration:none">
+    <section class="hero${side.length ? "" : " hero-solo"}" aria-label="À la une">
+      <a class="hero-main" href="/article/${featured.slug}.html" style="${coverStyle(featured)}">
+        <span class="hero-scrim" aria-hidden="true"></span>
         <div class="hero-overlay">
           <span class="tag">${escAttr(cat.label)}</span>
           <h1 class="hero-title">${escAttr(featured.title)}</h1>
           <p class="hero-sub">${escAttr(featured.excerpt)}</p>
-          <div class="hero-meta"><strong>${escAttr(featured.author ? featured.author.name : "Rédaction")}</strong><span>${formatDateFR(featured.publishedAt)}</span><span>${featured.readingTime} min</span></div>
-          <span class="hero-read">Lire l'article →</span>
+          <div class="hero-meta"><strong>${escAttr(featured.author ? featured.author.name : "Rédaction")}</strong><span>${formatDateFR(featured.publishedAt)}</span><span>${featured.readingTime} min de lecture</span></div>
         </div>
       </a>
-      <div class="hero-side">
+      ${side.length ? `<div class="hero-side">
+        <div class="side-head">À lire aussi</div>
         ${side.map((a) => {
-          const c = catBySlug[a.category] || { label: a.category, color: "#0A1F44" };
-          const bg2 = a.mainImage && a.mainImage.url ? `url('${escAttr(a.mainImage.url)}') center/cover` : `linear-gradient(135deg,#0A1F44,${c.color})`;
+          const c = catBySlug[a.category] || { label: a.category };
           return `<a class="side-art" href="/article/${a.slug}.html">
-            <div class="sa-thumb" style="background:${bg2}"></div>
-            <div><span class="sa-cat">${escAttr(c.label)}</span><h4 class="sa-title">${escAttr(a.title)}</h4>
-            <div class="sa-meta">${escAttr(a.author ? a.author.name : "Rédaction")} · ${formatDateFR(a.publishedAt)}</div></div>
+            <div class="sa-thumb" style="${coverStyle(a)}"></div>
+            <div class="sa-body"><span class="sa-cat">${escAttr(c.label)}</span><h4 class="sa-title">${escAttr(a.title)}</h4>
+            <div class="sa-meta">${meta(a)}</div></div>
           </a>`;
         }).join("")}
-      </div>
-    </div>`;
+      </div>` : ""}
+    </section>`;
   } else {
-    heroHtml = `<div class="hero">${emptyState("📰", "Aucun article publié pour le moment", "La une s'affichera automatiquement dès qu'un premier article sera publié.")}</div>`;
+    heroHtml = `
+    <section class="welcome" aria-label="Bienvenue">
+      <div class="welcome-in">
+        <span class="welcome-eyebrow">${escAttr(settings.siteName)}</span>
+        <h1>${escAttr(settings.tagline)}</h1>
+        <p>${escAttr(settings.description)}</p>
+        <p class="welcome-note">Les articles publiés apparaîtront ici dès leur mise en ligne.</p>
+        <div class="welcome-cta"><a class="btn-orange" href="/a-propos">Découvrir ${escAttr(settings.siteName)}</a><a class="btn-ghost-light" href="/recherche">Rechercher</a></div>
+      </div>
+    </section>`;
   }
 
   const latestHtml = latest.length
-    ? `<div class="news-grid">${latest.map(newsCard).join("")}</div>`
-    : emptyState("📰", "Aucune actualité récente", "Les derniers articles publiés apparaîtront ici.");
+    ? `<div class="sec-head"><div class="sec-label">Dernières nouvelles</div><div class="sec-rule"></div></div>
+       <div class="news-grid">${latest.map(newsCard).join("")}</div>`
+    : "";
 
+  // Une section par rubrique QUI A des articles (aucun bloc vide empilé).
   const catSectionsHtml = categories
     .filter((c) => c.slug !== "opinions")
     .map((c) => {
-      const arts = publishedArticles.filter((a) => a.category === c.slug).slice(0, 3);
+      const arts = publishedArticles.filter((a) => a.category === c.slug).slice(0, 4);
+      if (!arts.length) return "";
+      const [lead, ...rest] = arts;
       return `
-      <div class="sec-head">
-        <div class="sec-label">${c.icon} ${escAttr(c.label)}</div>
-        <div class="sec-rule"></div>
-        <a href="/${c.slug}.html" class="sec-more">Tout voir →</a>
-      </div>
-      ${arts.length ? `<div class="news-grid">${arts.map(newsCard).join("")}</div>` : emptyState(c.icon, `Aucun article ${c.label.toLowerCase()} pour le moment`, "Cette rubrique s'alimentera automatiquement dès qu'un article y sera publié.")}
-      `;
+      <section class="cat-block" aria-label="${escAttr(c.label)}">
+        <div class="sec-head"><div class="sec-label">${escAttr(c.label)}</div><div class="sec-rule"></div><a href="/${c.slug}.html" class="sec-more">Tout voir →</a></div>
+        <div class="cat-grid">
+          ${newsCard(lead)}
+          ${rest.length ? `<div class="cat-list">${rest.map((a) => `<a class="side-art" href="/article/${a.slug}.html">
+            <div class="sa-thumb" style="${coverStyle(a)}"></div>
+            <div class="sa-body"><h4 class="sa-title">${escAttr(a.title)}</h4><div class="sa-meta">${meta(a)}</div></div>
+          </a>`).join("")}</div>` : ""}
+        </div>
+      </section>`;
     }).join("");
 
   const opinionsHtml = opinions.length
-    ? `<div class="op-grid">${opinions.map((a) => `
+    ? `<div class="sec-head"><div class="sec-label">Opinions &amp; Analyses</div><div class="sec-rule"></div><a href="/opinions.html" class="sec-more">Tout voir →</a></div>
+       <div class="op-grid">${opinions.map((a) => `
       <a class="op-card reveal" href="/article/${a.slug}.html">
         <div class="op-av">${escAttr((a.author ? a.author.name : "R").charAt(0))}</div>
         <div class="op-name">${escAttr(a.author ? a.author.name : "Rédaction")}</div>
         <div class="op-role">${articleBadges(a) || "Contributeur"}</div>
         <p class="op-title">${escAttr(a.title)}</p>
       </a>`).join("")}</div>`
-    : emptyState("✍️", "Aucune tribune publiée pour le moment", `Retrouvez bientôt des tribunes et analyses dans <a href="/opinions.html">Opinions &amp; Analyses</a>.`);
+    : "";
+
+  // « Les plus lus » : rempli dans le navigateur à partir des lectures réellement mesurées ; masqué tant qu'il n'y en a aucune.
+  const mostRead = `<section id="mostRead" hidden aria-label="Les plus lus">
+      <div class="sec-head"><div class="sec-label">Les plus lus</div><div class="sec-rule"></div></div>
+      <ol class="most-read" id="mostReadList"></ol>
+    </section>`;
 
   const body = `
   <main>
-  <div class="wrap">
+  <div class="wrap home">
     ${heroHtml}
-    <div class="sec-head" style="margin-top:40px"><div class="sec-label">Dernières nouvelles</div><div class="sec-rule"></div></div>
     ${latestHtml}
     ${catSectionsHtml}
-    <div class="sec-head"><div class="sec-label">✍️ Opinions &amp; Analyses</div><div class="sec-rule"></div><a href="/opinions.html" class="sec-more">Tout voir →</a></div>
     ${opinionsHtml}
-    <div class="sec-head"><div class="sec-label">Les plus lus</div><div class="sec-rule"></div></div>
-    ${emptyState("📊", "Classement à venir", "Ce classement s'activera automatiquement dès qu'un système de mesure d'audience réel sera connecté au site.")}
+    ${mostRead}
+    <div class="sec-head"><div class="sec-label">Explorer par rubrique</div><div class="sec-rule"></div></div>
+    ${chips}
   </div>
   </main>`;
 
@@ -433,7 +462,7 @@ function buildArticlePages() {
     const next = publishedArticles[idx - 1];
     const related = publishedArticles.filter((x) => x.slug !== a.slug && x.category === a.category).slice(0, 3);
 
-    const heroBg = a.mainImage && a.mainImage.url ? `url('${escAttr(a.mainImage.url)}') center/cover` : `linear-gradient(135deg,#0A1F44,${cat.color})`;
+    const heroBg = coverStyle(a).replace(/^background:/, "");
 
     const sourcesHtml = (a.sources && a.sources.length)
       ? `<div class="sources-block"><h3>Sources</h3><ul>${a.sources.map((s) => `<li><a href="${escAttr(s.url)}" target="_blank" rel="noopener nofollow">${escAttr(s.name)}</a>${s.description ? " — " + escAttr(s.description) : ""}</li>`).join("")}</ul></div>`

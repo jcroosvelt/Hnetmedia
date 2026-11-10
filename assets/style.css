@@ -466,3 +466,180 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .admin-form input,.admin-form select,.admin-form textarea{width:100%;font-family:'Inter',sans-serif;font-size:13.5px;padding:10px 12px;border:1px solid var(--gray-lt);border-radius:var(--r-sm)}
 .admin-form textarea{min-height:140px;resize:vertical}
 .admin-json-output{background:#0A1F44;color:#8FD8FF;font-family:'Menlo','Consolas',monospace;font-size:12px;padding:16px;border-radius:var(--r-sm);white-space:pre-wrap;word-break:break-word;margin-top:16px;max-height:400px;overflow:auto}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   REFONTE 10 nov. 2026 (décision du propriétaire) — mêmes couleurs, mêmes polices, même logo.
+   Nouvelle composition : en-tête allégé, une « une » lisible, cartes régulières, sections seulement si elles
+   ont des articles, rythme vertical plus aéré. Aucune nouvelle couleur.
+══════════════════════════════════════════════════════════════════════════════ */
+:root{--r-lg:14px;--sh-sm:0 1px 2px rgba(10,31,68,.06),0 2px 10px rgba(10,31,68,.05);--sh-md:0 10px 30px rgba(10,31,68,.14)}
+body{background:var(--white);line-height:1.5}
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.wrap,.header-top,.nav-inner,.footer-grid,.ft-bottom{max-width:1240px}
+
+/* ── En-tête : ligne du haut qui défile, barre de rubriques qui reste visible ── */
+.ticker{height:36px}
+.site-header{top:-76px;border-bottom:0;box-shadow:0 2px 0 var(--orange),0 6px 18px rgba(10,31,68,.18)}
+.header-top{height:76px}
+.logo-img{height:54px}
+.date-line{font-size:12px;color:rgba(255,255,255,.62);letter-spacing:.2px}
+.date-line:first-letter{text-transform:uppercase}
+.search-field{border-radius:999px;padding:10px 42px 10px 18px;width:240px;background:rgba(255,255,255,.1)}
+.search-field:focus{width:280px}
+.search-icon{border-radius:0 999px 999px 0;width:42px}
+.lang-sw,.lang-btn{border-radius:999px}
+.site-nav,nav{border-top:1px solid rgba(255,255,255,.1)}
+.nav-inner{height:50px;gap:2px}
+.nav-link{height:50px;font-size:12.5px;letter-spacing:.9px;color:rgba(255,255,255,.72);padding:0 15px}
+.nav-link::after{left:15px;right:15px;height:3px}
+.nav-dot{display:none}
+
+/* ── Sections : titres éditoriaux ── */
+.sec-head{margin:60px 0 26px;align-items:baseline}
+.sec-label{font-family:'Playfair Display',serif;font-size:25px;font-weight:900;letter-spacing:-.2px;text-transform:none;color:var(--navy);border-left:0;padding:0 0 12px;position:relative}
+.sec-label::after{content:'';position:absolute;left:0;bottom:0;width:38px;height:4px;border-radius:2px;background:var(--orange)}
+.sec-rule{align-self:flex-end;margin-bottom:5px}
+.sec-more{font-size:12.5px;padding:8px 14px;border:1px solid var(--gray-lt);border-radius:999px;color:var(--navy);align-self:center}
+.sec-more:hover{border-color:var(--orange);color:var(--orange)}
+
+/* ── Étiquettes de rubrique : une seule couleur de marque ── */
+.tag,.tag-sport,.tag-culture,.tag-tech,.tag-monde,.tag-economie,.tag-sante,.tag-opinions{background:var(--orange);color:#fff;border-radius:999px;font-size:10px;letter-spacing:1.4px;padding:5px 11px}
+
+/* ── Une : image pleine, texte lisible, liste « à lire aussi » ── */
+.hero{margin-top:28px;grid-template-columns:minmax(0,1fr) 360px;gap:28px;align-items:stretch}
+.hero.hero-solo{grid-template-columns:minmax(0,1fr)}
+.hero-main{display:block;position:relative;overflow:hidden;border-radius:var(--r-lg);min-height:540px;color:#fff;box-shadow:var(--sh-md)}
+.hero-scrim{position:absolute;inset:0;background:linear-gradient(to top,rgba(3,8,18,.94) 0%,rgba(3,8,18,.6) 42%,rgba(3,8,18,.08) 78%)}
+.hero-overlay{position:absolute;left:0;right:0;bottom:0;padding:40px 40px 36px}
+.hero-title{font-family:'Playfair Display',serif;font-size:clamp(28px,3.4vw,42px);font-weight:900;line-height:1.14;letter-spacing:-.4px;color:#fff;margin:14px 0 12px;max-width:760px;text-wrap:balance}
+.hero-main:hover .hero-title{text-decoration:underline;text-decoration-color:var(--orange);text-decoration-thickness:3px;text-underline-offset:6px}
+.hero-sub{font-size:16px;line-height:1.6;color:rgba(255,255,255,.82);max-width:660px;margin:0 0 18px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.hero-meta{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12.5px;color:rgba(255,255,255,.7)}
+.hero-meta strong{color:var(--orange-lt);font-weight:700}
+.hero-side{display:flex;flex-direction:column;background:var(--white);border:1px solid var(--gray-lt);border-radius:var(--r-lg);padding:6px 22px 8px}
+.side-head{font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--navy);padding:18px 0 12px;border-bottom:2px solid var(--orange);margin-bottom:2px;width:max-content}
+.side-art{display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--gray-lt);align-items:flex-start}
+.side-art:first-of-type{padding-top:14px}
+.side-art:last-child{border-bottom:0}
+.sa-thumb{width:96px;height:72px;border-radius:10px;flex-shrink:0}
+.sa-body{flex:1;min-width:0}
+.sa-cat{display:block;font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--orange);margin-bottom:5px}
+.sa-title{font-size:15.5px;line-height:1.28;margin-bottom:6px}
+.sa-meta{font-size:11.5px;color:var(--gray-dk)}
+
+/* ── Cartes d'articles ── */
+.news-grid{gap:38px 28px}
+.news-card{display:flex;flex-direction:column}
+.news-card:hover{transform:none}
+.nc-img{height:auto;aspect-ratio:16/10;border-radius:var(--r-lg);margin-bottom:16px;box-shadow:var(--sh-sm)}
+.nc-badge{top:12px;left:12px}
+.nc-title{font-size:21px;line-height:1.24;letter-spacing:-.2px;margin-bottom:10px;text-wrap:balance}
+.nc-excerpt{font-size:14.5px;line-height:1.62;color:var(--gray-dk);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:14px}
+.nc-foot{margin-top:auto;border-top:0;padding-top:0;font-size:12px;color:var(--gray-dk)}
+.nc-author{color:var(--navy);font-weight:700}
+
+/* ── Bloc de rubrique : une grande carte + une liste ── */
+.cat-block .sec-head{margin-top:64px}
+.cat-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:34px;align-items:start}
+.cat-grid:not(:has(.cat-list)){grid-template-columns:minmax(0,520px)}
+.cat-list{display:flex;flex-direction:column;border-top:1px solid var(--gray-lt)}
+.cat-list .side-art{padding:20px 0}
+.cat-list .sa-thumb{width:120px;height:84px}
+.cat-list .sa-title{font-size:17px}
+
+/* ── Tribunes ── */
+.op-grid{gap:22px;margin-bottom:10px}
+.op-card{border-radius:var(--r-lg);padding:26px;box-shadow:var(--sh-sm)}
+.op-card:hover{transform:translateY(-3px)}
+
+/* ── Les plus lus (lectures réellement mesurées) ── */
+.most-read{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 36px}
+.most-read li{border-bottom:1px solid var(--gray-lt)}
+.most-read a{display:flex;gap:16px;align-items:baseline;padding:16px 0}
+.mr-n{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;color:var(--orange);line-height:1;min-width:34px}
+.mr-t{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;line-height:1.3;color:var(--ink)}
+.most-read a:hover .mr-t{color:var(--orange)}
+
+/* ── Rubriques (puces) ── */
+.cat-chips{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+.cat-chip{font-size:13.5px;font-weight:600;color:var(--navy);padding:10px 18px;border:1px solid var(--gray-lt);border-radius:999px;background:var(--white);transition:.2s}
+.cat-chip:hover{border-color:var(--orange);color:var(--orange);transform:translateY(-1px)}
+
+/* ── Accueil sans article : page d'accueil de marque (aucun faux contenu) ── */
+.welcome{margin-top:28px;background:var(--navy);border-radius:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--sh-md)}
+.welcome::before{content:'';position:absolute;right:-90px;top:-90px;width:380px;height:380px;border-radius:50%;border:1px solid rgba(255,107,0,.35)}
+.welcome::after{content:'';position:absolute;right:130px;bottom:-150px;width:280px;height:280px;border-radius:50%;border:1px solid rgba(0,200,240,.3)}
+.welcome-in{position:relative;z-index:1;max-width:720px;padding:72px 48px 68px}
+.welcome-eyebrow{font-size:11px;font-weight:700;letter-spacing:3.5px;text-transform:uppercase;color:var(--orange)}
+.welcome h1{font-family:'Playfair Display',serif;font-size:clamp(32px,4.4vw,52px);font-weight:900;line-height:1.1;letter-spacing:-.5px;margin:16px 0 18px;text-wrap:balance}
+.welcome p{font-size:16.5px;line-height:1.65;color:rgba(255,255,255,.8);margin-bottom:12px}
+.welcome .welcome-note{font-size:13.5px;color:rgba(255,255,255,.55);margin-bottom:28px}
+.welcome-cta{display:flex;flex-wrap:wrap;gap:12px}
+.btn-orange,.btn-ghost-light{display:inline-flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:700;padding:13px 26px;border-radius:999px;transition:.2s;min-height:46px}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-orange:hover{background:var(--orange-lt)}
+.btn-ghost-light{border:1px solid rgba(255,255,255,.4);color:#fff}
+.btn-ghost-light:hover{background:rgba(255,255,255,.12);border-color:#fff}
+
+/* ── États vides (rubriques, tags, auteurs) ── */
+.empty-state{border:0;background:var(--gray-bg);border-radius:var(--r-lg);margin:36px auto}
+
+/* ── Bandeau d'une rubrique ── */
+.page-banner{border-radius:var(--r-lg);padding:36px 36px}
+.page-banner-title{font-size:30px}
+.page-banner-desc{color:rgba(255,255,255,.7);font-size:14px}
+.breadcrumb{margin-top:26px;font-size:12.5px}
+
+/* ── Newsletter (non active : message honnête, sans formulaire) ── */
+.nl-section{padding:64px 24px}
+.nl-title{font-size:32px}
+.nl-sub{color:rgba(255,255,255,.7);max-width:480px;margin:0 auto}
+.nl-sub a{color:var(--orange-lt);text-decoration:underline;text-underline-offset:3px}
+
+/* ── Pied de page ── */
+.site-footer{padding-top:60px}
+.ft-logo-img{filter:none;opacity:1;height:44px}
+.ft-desc{color:rgba(255,255,255,.55);font-size:13.5px}
+.ft-links a{color:rgba(255,255,255,.6);font-size:13.5px}
+.ft-links li{margin-bottom:11px}
+.ft-bottom{color:rgba(255,255,255,.55)}
+.ft-legal a{color:rgba(255,255,255,.5)}
+
+/* ── Pages fixes ── */
+.static-wrap{max-width:780px}
+.static-card{border-radius:var(--r-lg)}
+
+@media(max-width:1100px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .hero-side{display:block}
+  .cat-grid{grid-template-columns:minmax(0,1fr)}
+  .most-read{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:700px){
+  .site-header{top:-64px}
+  .header-top{height:64px}
+  .logo-img{height:40px}
+  .search-field,.search-field:focus{width:100%;min-width:0;padding-right:36px}
+  .search-icon{width:36px}
+  .ticker{height:34px}
+  .nav-inner{height:46px}
+  .nav-link{height:46px;padding:0 13px}
+  .nav-link::after{left:13px;right:13px}
+  .hero{margin-top:18px;gap:18px}
+  .hero-main{min-height:440px;border-radius:12px}
+  .hero-overlay{padding:24px 20px 22px}
+  .hero-title{font-size:27px}
+  .hero-sub{font-size:14.5px;-webkit-line-clamp:2}
+  .hero-side{padding:4px 16px 6px}
+  .sec-head{margin:44px 0 20px}
+  .sec-label{font-size:22px}
+  .news-grid{gap:32px}
+  .nc-title{font-size:20px}
+  .welcome-in{padding:44px 24px 40px}
+  .welcome{border-radius:16px}
+  .sa-thumb{width:84px;height:64px}
+  .cat-list .sa-thumb{width:96px;height:72px}
+  .sec-more{padding:6px 12px}
+}
+@media(max-width:360px){.logo-img{height:34px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}}

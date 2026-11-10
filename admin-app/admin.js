@@ -286,6 +286,7 @@
     if (can("contact.read")) t.push(["#/messages", "Messages", "mail", "Lecteurs"]);
     if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés", "users", "Lecteurs"]);
     if (can("stats.read")) t.push(["#/stats", "Statistiques", "chart", "Lecteurs"]);
+    if (can("settings.manage")) t.push(["#/pages", "Pages du site", "doc", "Administration"]);
     if (can("settings.manage")) t.push(["#/reglages", "Réglages", "gear", "Administration"]);
     if (can("user.manage")) t.push(["#/comptes", "Comptes", "users", "Administration"]);
     t.push(["#/compte", "Mon compte", "key", "Mon espace"]);
@@ -355,6 +356,8 @@
     else if (parts[0] === "equipe" && can("author.manage")) run = function () { return renderTeam(view); };
     else if (parts[0] === "partenaires" && can("partner.manage")) run = function () { return renderPartners(view); };
     else if (parts[0] === "offres" && can("job.manage")) run = function () { return renderJobs(view); };
+    else if (parts[0] === "pages" && parts[1] && can("settings.manage")) run = function () { return renderPageEdit(view, parts[1]); };
+    else if (parts[0] === "pages" && can("settings.manage")) run = function () { return renderPages(view); };
     else if (parts[0] === "reglages" && can("settings.manage")) run = function () { return renderSettings(view); };
     else if (parts[0] === "comptes") run = function () { return renderUsers(view); };
     else if (parts[0] === "compte") run = function () { return renderAccount(view); };
@@ -1505,6 +1508,108 @@
     return load();
   }
 
+  /* ───────── Pages fixes (À propos, Charte, Publicité, CGU, Confidentialité, Cookies) ───────── */
+  function renderPages(view) {
+    return ensureMeta().then(function () { return api("GET", "pages"); }).then(function (r) {
+      clear(view);
+      view.appendChild(heading("Pages du site", "Modifiez le texte des pages fixes avec le même éditeur que les articles. Tant qu'une page n'est pas modifiée, le site garde son texte d'origine."));
+      view.appendChild(h("div", { class: "update-note", style: "margin-bottom:14px", text: S.meta && S.meta.siteRebuild
+        ? "Chaque enregistrement met le site à jour automatiquement (1 à 2 minutes)."
+        : "La mise à jour automatique du site n'est pas configurée : les changements n'apparaîtront qu'au prochain déploiement." }));
+      view.appendChild(h("table", { class: "hn-table stack" },
+        h("thead", null, h("tr", null, ["Page", "Adresse", "État", "Modifiée", ""].map(function (c) { return h("th", { text: c }); }))),
+        h("tbody", null, r.items.map(function (p) {
+          return h("tr", null,
+            h("td", { "data-l": "Page" }, h("a", { class: "hn-link", href: "#/pages/" + p.slug, text: p.title })),
+            h("td", { "data-l": "Adresse", class: "hn-muted", text: "/" + p.slug }),
+            h("td", { "data-l": "État", text: p.custom ? "Modifiée" : "Texte d'origine" }),
+            h("td", { "data-l": "Modifiée", class: "hn-muted", text: p.updatedAt ? fmt(p.updatedAt) : "—" }),
+            h("td", null, h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "#/pages/" + p.slug, text: "Modifier" }), " ",
+              h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "/" + p.slug, target: "_blank", rel: "noopener", text: "Voir" })));
+        }))));
+    });
+  }
+
+  // Texte d'origine d'une page : lu sur la page publique (même site), mis en forme pour l'éditeur.
+  function defaultPageHtml(slug) {
+    return fetch("/" + slug + ".html", { credentials: "omit" }).then(function (r) {
+      if (!r.ok) throw new Error("Texte d'origine introuvable.");
+      return r.text();
+    }).then(function (html) {
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      var wrap = doc.querySelector(".static-wrap");
+      if (!wrap) return "";
+      var h1 = wrap.querySelector("h1"); if (h1) h1.remove();
+      Array.prototype.forEach.call(wrap.querySelectorAll(".static-grid"), function (g) {
+        var ul = doc.createElement("ul");
+        Array.prototype.forEach.call(g.querySelectorAll(".static-card"), function (c) {
+          var li = doc.createElement("li"), st = doc.createElement("strong");
+          st.textContent = (c.querySelector("strong") || {}).textContent || "";
+          li.appendChild(st); li.appendChild(doc.createTextNode(" — " + ((c.querySelector("span") || {}).textContent || "")));
+          ul.appendChild(li);
+        });
+        g.replaceWith(ul);
+      });
+      Array.prototype.forEach.call(wrap.querySelectorAll(".dev-notice"), function (n) { var p = doc.createElement("p"), em = doc.createElement("em"); em.textContent = n.textContent; p.appendChild(em); n.replaceWith(p); });
+      return wrap.innerHTML;
+    });
+  }
+
+  function renderPageEdit(view, slug) {
+    return Promise.all([ensureMeta(), api("GET", "pages/" + encodeURIComponent(slug)), loadEditor()]).then(function (res) {
+      var pg = res[1].page;
+      return (pg.content !== null ? Promise.resolve(pg.content) : defaultPageHtml(slug)).then(function (startHtml) {
+        var dirty = false, ed = null;
+        var title = h("input", { id: "pg-title", class: "wd-titlein", type: "text", maxlength: 120, value: pg.title, "aria-label": "Titre de la page", style: "height:auto" });
+        var desc = h("textarea", { id: "pg-desc", rows: 2, maxlength: 300, "aria-label": "Description pour les moteurs de recherche", placeholder: "Description pour les moteurs de recherche (facultatif)", class: "wd-excerpt" });
+        desc.value = pg.description || "";
+        var contentEl = h("div", { class: "hn-ed-content article-body", id: "pg-editor" });
+        var saveState = h("span", { class: "wd-savestate", "aria-live": "polite" });
+        var statsEl = h("span", { class: "wd-stats", "aria-live": "polite" });
+        var ribbonEl = h("div", { class: "wd-ribbon" });
+        var badge = h("span", { class: "wd-status", text: pg.custom ? "Modifiée" : "Texte d'origine" });
+        function mark() { dirty = true; saveBtn.disabled = false; saveState.textContent = "Modifications non enregistrées"; }
+        var saveBtn = h("button", { type: "button", class: "wd-tbtn wd-save", disabled: true, onclick: save }, h("span", { class: "wd-tlbl", text: "Enregistrer" }));
+        var resetBtn = h("button", { type: "button", class: "wd-tbtn", hidden: !pg.custom, onclick: reset }, h("span", { class: "wd-tlbl", text: "Rétablir l'original" }));
+        var titleBar = h("header", { class: "wd-title" },
+          h("a", { class: "wd-back", href: "#/pages", "aria-label": "Retour à la liste des pages", title: "Retour aux pages", html: pageIcon("back", 20) }),
+          h("div", { class: "wd-doc" }, h("span", { class: "wd-docname", text: pg.defaultTitle }), badge),
+          h("div", { class: "wd-actions" }, saveBtn, resetBtn, h("a", { class: "wd-tbtn", href: "/" + slug, target: "_blank", rel: "noopener" }, h("span", { class: "wd-tlbl", text: "Voir la page" }))));
+        var sheet = h("article", { class: "wd-sheet" }, title, desc, h("hr", { class: "wd-rule" }), contentEl);
+        var wd = h("div", { class: "wd" }, titleBar, ribbonEl, h("div", { class: "wd-body" }, h("div", { class: "wd-canvas" }, sheet)), h("footer", { class: "wd-statusbar" }, statsEl, saveState));
+        clear(view); view.appendChild(wd);
+        ed = window.HNetEditor.create({
+          ribbon: ribbonEl, content: contentEl, html: startHtml, ask: ask, pickImage: pickImage,
+          onChange: function () { mark(); },
+          onStats: function (st) { clear(statsEl); statsEl.appendChild(h("span", { text: st.words + " mot" + (st.words > 1 ? "s" : "") })); statsEl.appendChild(h("span", { class: "wd-opt", text: " · lecture ≈ " + st.minutes + " min" })); }
+        });
+        ed.setHTML(startHtml);
+        dirty = false; saveBtn.disabled = true; saveState.textContent = pg.custom ? "" : "Texte d'origine : enregistrez pour le modifier";
+        title.addEventListener("input", mark); desc.addEventListener("input", mark);
+        function save() {
+          saveBtn.disabled = true; saveState.textContent = "Enregistrement…";
+          api("PUT", "pages/" + encodeURIComponent(slug), { title: title.value, description: desc.value, content: ed.getHTML() }).then(function (r) {
+            dirty = false; pg = r.page; badge.textContent = "Modifiée";
+            saveState.textContent = "Enregistré à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+            toast(S.meta && S.meta.siteRebuild ? "Page enregistrée. Le site se met à jour (1 à 2 minutes)." : "Page enregistrée. Mise à jour automatique du site non configurée.");
+            resetBtn.hidden = false;
+          }).catch(function (x) { saveBtn.disabled = false; saveState.textContent = "Échec de l'enregistrement"; toast(x.message, true); });
+        }
+        function reset() {
+          confirmBox("La page retrouvera son texte d'origine ; votre version modifiée sera supprimée.", { title: "Rétablir le texte d'origine ?", confirm: "Rétablir", danger: true }).then(function (ok) {
+            if (!ok) return;
+            api("DELETE", "pages/" + encodeURIComponent(slug)).then(function () { dirty = false; toast("Texte d'origine rétabli."); location.hash = "#/pages"; }).catch(function (x) { toast(x.message, true); });
+          });
+        }
+        function onKey(e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (!saveBtn.disabled) save(); } }
+        function beforeUnload(e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } }
+        document.addEventListener("keydown", onKey); window.addEventListener("beforeunload", beforeUnload);
+        guard = function () { return !dirty || window.confirm("Des modifications ne sont pas enregistrées. Quitter cette page quand même ?"); };
+        cleanup = function () { document.removeEventListener("keydown", onKey); window.removeEventListener("beforeunload", beforeUnload); if (ed) ed.destroy(); };
+      });
+    });
+  }
+
   /* ───────── Réglages du site (administrateur) ───────── */
   function renderSettings(view) {
     var SOC = [["twitter", "X (Twitter)"], ["facebook", "Facebook"], ["linkedin", "LinkedIn"], ["youtube", "YouTube"], ["instagram", "Instagram"]];
@@ -1528,6 +1633,8 @@
         card("Le site", "Nom, slogan et description utilisés partout (en-têtes, partage, moteurs de recherche).", [
           field("siteName", "Nom du site", cur.siteName, { max: 80 }), field("tagline", "Slogan", cur.tagline, { max: 120 }),
           field("description", "Description du site", cur.description, { area: true, max: 300 })]),
+        card("Pied de page", "Texte affiché sous le logo en bas de chaque page. Laissez vide pour garder le texte d'origine.", [
+          field("footerText", "Texte du pied de page", cur.footerText, { area: true, max: 300 })]),
         card("Réseaux sociaux", "Seuls les réseaux renseignés apparaissent dans le pied de page. Laissez vide pour ne rien afficher.",
           SOC.map(function (c) { return field("soc-" + c[0], c[1] + " (https://…)", cur.social[c[0]], { type: "url", max: 300 }); })),
         card("Mentions légales", "Informations juridiques réelles de l'éditeur et de l'hébergeur. Tant qu'elles manquent, la page publique affiche un avis « incomplet ».",
@@ -1540,7 +1647,7 @@
         var social = {}, legal = {};
         SOC.forEach(function (c) { social[c[0]] = F["soc-" + c[0]].value.trim(); });
         LEG.forEach(function (c) { legal[c[0]] = F["leg-" + c[0]].value.trim(); });
-        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
+        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, footerText: F.footerText.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
           .then(function () { toast("Réglages enregistrés."); })
           .catch(function (x) { err.textContent = x.message; err.hidden = false; });
       });

@@ -18,7 +18,7 @@ async function loadContent() {
   // horaire fait passer ces derniers à « publié » ; ici, tout déploiement après l'heure les inclut déjà).
   const PUBLISHED = "a.status IN ('publie', 'programme') AND a.published_at <= now()";
 
-  const [cats, rows, authors, tags, partners, jobs, arts, artTags, sources, corrections] = await Promise.all([
+  const [cats, rows, authors, tags, partners, jobs, arts, artTags, sources, corrections, pageRows] = await Promise.all([
     db.query(`SELECT slug, label, icon, color, tag_class AS "tagClass", description FROM categories ORDER BY position, slug`),
     db.query(`SELECT key, value FROM site_settings`),
     db.query(`SELECT id, name, role, bio, photo_url AS photo, social FROM authors WHERE active ORDER BY name`),
@@ -45,6 +45,7 @@ async function loadContent() {
               WHERE ${PUBLISHED} ORDER BY s.article_id, s.position`),
     db.query(`SELECT c.article_id, c.text, c.corrected_at FROM corrections c JOIN articles a ON a.id = c.article_id
               WHERE ${PUBLISHED} ORDER BY c.corrected_at`),
+    db.query(`SELECT slug, title, description, content FROM site_pages`),
   ]);
 
   const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
@@ -59,6 +60,7 @@ async function loadContent() {
   settings.contactCategories = settings.contactCategories || [];
   settings.partners = partners;
   settings.jobs = jobs;
+  settings.pages = Object.fromEntries(pageRows.map((p) => [p.slug, { title: p.title, description: p.description || "", content: p.content }]));
 
   const group = (list) => {
     const m = new Map();

@@ -119,6 +119,8 @@ function init(content) {
   /* ── PARTIELS ── */
   headerHtml = readFile(path.join(PARTIALS_DIR, "header.html"));
   footerHtml = readFile(path.join(PARTIALS_DIR, "footer.html"));
+  // Texte du pied de page : réglage facultatif (/admin › Réglages), sinon le texte d'origine du partiel.
+  if (settings.footerText) footerHtml = footerHtml.replace(/<p class="ft-desc">[\s\S]*?<\/p>/, () => `<p class="ft-desc">${escAttr(settings.footerText)}</p>`);
   // Réseaux sociaux : uniquement ceux renseignés dans /admin › Réglages (aucun lien factice « # »).
   const SOC = [["twitter", "𝕏", "X (Twitter)"], ["facebook", "f", "Facebook"], ["linkedin", "in", "LinkedIn"], ["youtube", "▶", "YouTube"], ["instagram", "📷", "Instagram"]];
   const socLinks = SOC.filter(([k]) => settings.social && /^https:\/\//.test(settings.social[k] || ""));
@@ -666,14 +668,27 @@ function injectDynamicBlocks(html, filename) {
 
 function buildStaticPages() {
   Object.entries(STATIC_PAGES).forEach(([filename, meta]) => {
-    let fragment = readFile(path.join(PAGES_DIR, filename));
-    fragment = injectDynamicBlocks(fragment, filename);
-    const body = `<main>${fragment}</main>`;
+    const custom = (settings.pages || {})[filename.replace(/\.html$/, "")];
+    let fragment, title = meta.title, description = meta.description;
+    if (custom) {
+      // Page modifiée dans /admin : titre échappé, contenu déjà nettoyé côté serveur (liste blanche).
+      fragment = `<div class="wrap">
+  <div class="breadcrumb"><a href="/">Accueil</a> / ${escAttr(custom.title)}</div>
+  <div class="static-wrap" style="margin-left:0">
+    <h1>${escAttr(custom.title)}</h1>
+    ${custom.content}
+  </div>
+</div>`;
+      title = `${custom.title} — ${settings.siteName}`;
+      if (custom.description) description = custom.description;
+    } else {
+      fragment = injectDynamicBlocks(readFile(path.join(PAGES_DIR, filename)), filename);
+    }
     writeFile(filename, wrapPage({
-      title: meta.title,
-      description: meta.description,
+      title,
+      description,
       canonicalPath: `/${filename}`,
-      bodyHtml: body,
+      bodyHtml: `<main>${fragment}</main>`,
     }));
   });
 

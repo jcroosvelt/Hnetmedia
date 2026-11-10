@@ -182,10 +182,10 @@ const jobs = {
 /* ═════════ RÉGLAGES DU SITE ═════════ */
 const settings = {
   async get() {
-    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','social','legal','contactCategories')");
+    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','footerText','social','legal','contactCategories')");
     const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     return {
-      siteName: m.siteName || "", tagline: m.tagline || "", description: m.description || "",
+      siteName: m.siteName || "", tagline: m.tagline || "", description: m.description || "", footerText: typeof m.footerText === "string" ? m.footerText : "",
       social: Object.assign(Object.fromEntries(SOCIAL_KEYS.map((k) => [k, ""])), m.social || {}),
       legal: Object.assign(Object.fromEntries(LEGAL_KEYS.map((k) => [k, ""])), m.legal || {}),
       contactCategories: Array.isArray(m.contactCategories) ? m.contactCategories : [],
@@ -195,6 +195,7 @@ const settings = {
     const siteName = text(b.siteName, 80, "Nom du site", { required: true });
     const tagline = text(b.tagline, 120, "Slogan", { required: true });
     const description = text(b.description, 300, "Description du site", { required: true });
+    const footerText = text(b.footerText, 300, "Texte du pied de page");
     const social = socialMap(b.social);
     const legal = {};
     for (const k of LEGAL_KEYS) { const t = text(b.legal && b.legal[k], k.endsWith("Address") ? 300 : 200, "Mentions légales"); if (t) legal[k] = t; }
@@ -208,7 +209,9 @@ const settings = {
       seen.add(c.toLowerCase());
     }
     const up = (k, val) => ({ text: `INSERT INTO site_settings (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, params: [k, JSON.stringify(val)] });
-    await getDb().transaction([up("siteName", siteName), up("tagline", tagline), up("description", description), up("social", social), up("legal", legal), up("contactCategories", cats)]);
+    // Texte du pied de page facultatif : vide = texte d'origine du site (la ligne est supprimée).
+    const footerQ = footerText ? up("footerText", footerText) : { text: "DELETE FROM site_settings WHERE key = 'footerText'", params: [] };
+    await getDb().transaction([up("siteName", siteName), up("tagline", tagline), up("description", description), footerQ, up("social", social), up("legal", legal), up("contactCategories", cats)]);
     await audit(s.user.id, "reglages.modification", "settings", null, { reseaux: Object.keys(social).length, mentions: Object.keys(legal).length });
     await changed("réglages du site");
     return this.get();

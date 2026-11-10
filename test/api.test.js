@@ -758,3 +758,59 @@ test("tableau de bord : chiffres réels, plus lus par article / rédacteur / rub
   assert.ok(j.activity === undefined && j.messagesNew === undefined && j.subscribers === undefined, "pas d'activité, ni messages, ni abonnés pour un journaliste");
   assert.ok(!JSON.stringify(o).includes("@"), "aucune adresse e-mail dans la réponse");
 });
+
+/* ═════════════════════════ PAGES FIXES MODIFIABLES + PIED DE PAGE ═════════════════════════ */
+test("pages fixes : droits, nettoyage du HTML, rendu public, retour au texte d'origine, pied de page", async () => {
+  await db().query("DELETE FROM rate_limits WHERE key LIKE 'login:email:%'");
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 190);
+  const chef = await loginAs("chef@hnetmedia.com", "mot de passe du chef 2026", 191);
+  assert.equal((await call("GET", "/api/admin/pages")).status, 401);
+  assert.equal((await as(chef, "GET", "/api/admin/pages")).status, 403, "réservé à l'administrateur (settings.manage)");
+
+  let r = await as(admin, "GET", "/api/admin/pages");
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json.items.map((p) => p.slug), ["a-propos", "charte-editoriale", "publicite", "cgu", "confidentialite", "cookies"]);
+  assert.ok(r.json.items.every((p) => p.custom === false), "aucune page modifiée au départ");
+  r = await as(admin, "GET", "/api/admin/pages/a-propos");
+  assert.equal(r.json.page.content, null, "texte d'origine : pas de contenu en base");
+  assert.equal((await as(admin, "GET", "/api/admin/pages/mentions-legales")).status, 404, "seules les pages prévues sont modifiables");
+  assert.equal((await as(admin, "GET", "/api/admin/pages/..%2Fetc")).status, 404);
+
+  const mal = `<h2>Notre mission $& vraie</h2><p>Un texte réel assez long pour passer. <script>alert(1)</script><img src="x" onerror="alert(2)"><a href="javascript:alert(3)">piège</a> <a href="/contact">Contact</a></p><iframe src="https://evil.example"></iframe>`;
+  assert.equal((await as(admin, "PUT", "/api/admin/pages/a-propos", { title: "ab", content: mal })).status, 400, "titre trop court");
+  assert.equal((await as(admin, "PUT", "/api/admin/pages/a-propos", { title: "Qui nous sommes", content: "<p>court</p>" })).status, 400, "texte trop court");
+  assert.equal((await as(admin, "PUT", "/api/admin/pages/inconnue", { title: "Titre valide", content: mal })).status, 404);
+  r = await as(admin, "PUT", "/api/admin/pages/a-propos", { title: "<b>Qui</b> sommes-nous & pourquoi", description: "Description <i>réelle</i>", content: mal });
+  assert.equal(r.status, 200, r.text);
+  const saved = r.json.page;
+  assert.equal(saved.title, "Qui sommes-nous & pourquoi", "titre en texte brut");
+  assert.ok(!/<script|onerror|javascript:|<iframe|evil\.example/i.test(saved.content), "script, gestionnaires, javascript: et iframe retirés : " + saved.content);
+  assert.ok(saved.content.includes('href="/contact"') && saved.content.includes("Notre mission $&amp; vraie") || saved.content.includes("Notre mission $& vraie"), "contenu légitime conservé");
+  assert.equal(saved.custom, true);
+
+  // rendu public
+  const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+  const buildTo = () => { const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-pg-")); execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out }, stdio: "pipe" }); return (f) => fs.readFileSync(path.join(out, f), "utf8"); };
+  let rd = buildTo();
+  let page = rd("a-propos.html");
+  assert.ok(page.includes("<h1>Qui sommes-nous &amp; pourquoi</h1>") && page.includes("Notre mission $"), "page modifiée publiée, titre échappé, « $ » intact");
+  assert.ok(!/alert\(|evil\.example|onerror/i.test(page), "rien de dangereux dans la page publiée");
+  assert.ok(page.includes('content="Description réelle"') || page.includes("Description réelle"), "description pour les moteurs de recherche");
+  assert.ok(!rd("charte-editoriale.html").includes("Qui sommes-nous &amp; pourquoi") && rd("charte-editoriale.html").includes("Charte éditoriale"), "les autres pages gardent leur texte d'origine");
+
+  // retour au texte d'origine
+  assert.equal((await as(admin, "DELETE", "/api/admin/pages/a-propos")).status, 200);
+  assert.equal((await as(admin, "DELETE", "/api/admin/pages/a-propos")).status, 404, "déjà rétablie");
+  assert.ok(buildTo()("a-propos.html").includes("Notre mission"), "texte d'origine revenu");
+
+  // pied de page modifiable (texte brut, échappé) ; vide = texte d'origine
+  const cur = (await as(admin, "GET", "/api/admin/settings")).json.settings;
+  r = await as(admin, "PUT", "/api/admin/settings", { ...cur, footerText: "Votre média <b>indépendant</b> & libre." });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.settings.footerText, "Votre média indépendant & libre.");
+  assert.ok(buildTo()("index.html").includes('<p class="ft-desc">Votre média indépendant &amp; libre.</p>'), "pied de page personnalisé, échappé");
+  r = await as(admin, "PUT", "/api/admin/settings", { ...cur, footerText: "" });
+  assert.equal(r.json.settings.footerText, "");
+  assert.ok(buildTo()("index.html").includes("Un journalisme indépendant, rigoureux"), "texte d'origine du pied de page rétabli");
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action IN ('page.modification','page.retablie')")).length >= 2, "actions journalisées");
+});

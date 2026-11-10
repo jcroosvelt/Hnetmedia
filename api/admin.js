@@ -26,6 +26,7 @@
  *   GET media                         images téléversées (les siennes, ou toutes avec media.manage)
  *   POST media                        octets bruts d'une image JPEG/PNG/WebP ≤ 2 Mo → { url:"/media/<id>" }
  *   DELETE media/:id                  refusée tant que l'image est utilisée
+ * Pages fixes (settings.manage) : GET|PUT|DELETE pages[/:slug] — texte d'origine rétabli par DELETE
  * Équipe / partenaires / offres / réglages (permissions author.manage, partner.manage, job.manage, settings.manage)
  *   GET|POST team, partners, jobs   PUT|DELETE team/:id, partners/:id, jobs/:id   GET|PUT settings
  * Comptes
@@ -39,6 +40,7 @@ const auth = require("../server/auth");
 const articles = require("../server/articles");
 const media = require("../server/media");
 const catalog = require("../server/catalog");
+const pages = require("../server/pages");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
 
@@ -297,6 +299,16 @@ function crud(perm, svc) {
     throw new HttpError(405, "Méthode non autorisée.");
   };
 }
+async function pagesRoute(req, res, parts) {
+  const slug = parts[1];
+  if (parts[2]) throw new HttpError(404, "Route inconnue.");
+  const s = await auth.requireAuth(req, "settings.manage");
+  if (!slug && req.method === "GET") return send(res, 200, { ok: true, items: await pages.list() });
+  if (slug && req.method === "GET") return send(res, 200, { ok: true, page: await pages.get(slug) });
+  if (slug && req.method === "PUT") return send(res, 200, { ok: true, page: await pages.save(s, slug, await readBody(req)) });
+  if (slug && req.method === "DELETE") return send(res, 200, await pages.reset(s, slug));
+  throw new HttpError(405, "Méthode non autorisée.");
+}
 async function settingsRoute(req, res, parts) {
   if (parts[1]) throw new HttpError(404, "Route inconnue.");
   const s = await auth.requireAuth(req, "settings.manage");
@@ -382,6 +394,7 @@ const ROUTES = {
   partners: crud("partner.manage", catalog.partners),
   jobs: crud("job.manage", catalog.jobs),
   settings: settingsRoute,
+  pages: pagesRoute,
 };
 
 module.exports = handler(["GET", "POST", "PUT", "PATCH", "DELETE"], async (req, res) => {

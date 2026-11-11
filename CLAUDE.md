@@ -18,6 +18,7 @@ Site statique multi-pages généré par `build.js` (Node) **à partir de Neon** 
 5. Site léger et simple à maintenir depuis un téléphone : tout se gère dans `/admin` (aucun fichier de contenu à éditer). `build.js` exige `DATABASE_URL` et **refuse de produire un site vide** si la base est injoignable (le déploiement échoue, l'ancienne version reste en ligne). Dépendances npm limitées au strict nécessaire ; Vercel n'installe que les dépendances de production (`npm ci --omit=dev`).
 6. Répondre et commenter en français.
 7. **Tenir `ETAT.md` à jour après CHAQUE modification** (demande du propriétaire, 11 nov. 2026) : date de dernière mise à jour, tableaux « ce qui marche / ce qui n'est pas actif », listes « à faire » (propriétaire / Claude), nombre de tests, et une ligne au journal. Le fichier est commité et poussé avec la modification elle-même, jamais après coup.
+8. **Flux de travail (demande du propriétaire, 11 nov. 2026) : on travaille directement dans ce dépôt, et chaque modification est commitée puis poussée sur `main` immédiatement** (déploiement Vercel automatique), sans branche ni PR intermédiaire, même si la session propose une autre branche.
 
 ## Architecture
 ```

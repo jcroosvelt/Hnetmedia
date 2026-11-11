@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 11 novembre 2026** · Dernier changement : création de ce fichier.
+> **Dernière mise à jour : 11 novembre 2026** · Dernier changement : règle de flux de travail (push direct sur `main`).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -72,6 +72,7 @@
 | 10 nov. | **Version anglaise** (`/en`), rubriques modifiables, URLs propres sans `.html`, créole retiré, nettoyage des images inutilisées, image de partage, style des pages fixes et du contact |
 | 10 nov. | **Refonte de l'interface publique** : accueil, en-tête, cartes, pied de page ; mesure des lectures enfin branchée |
 | 10 nov. | Pages fixes modifiables depuis `/admin` ; texte du pied de page |
+| 11 nov. | Règle enregistrée : chaque modification est poussée directement sur `main` (déploiement) |
 | 9 nov. | Tableau de bord (2 designs), statistiques réelles, plus lus |
 | 9 nov. | Favicon : symbole réel du logo |
 | 8 nov. | Médias, équipe, partenaires, offres, réglages ; pagination des tags et auteurs |

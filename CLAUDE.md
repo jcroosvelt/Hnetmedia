@@ -17,6 +17,7 @@ Site statique multi-pages généré par `build.js` (Node) **à partir de Neon** 
 4. **Honnêteté fonctionnelle.** Une fonction n'est présentée comme active qu'une fois réellement branchée et testée de bout en bout. Tant que ce n'est pas le cas, elle reste signalée comme non connectée. Jamais de fausse confirmation.
 5. Site léger et simple à maintenir depuis un téléphone : tout se gère dans `/admin` (aucun fichier de contenu à éditer). `build.js` exige `DATABASE_URL` et **refuse de produire un site vide** si la base est injoignable (le déploiement échoue, l'ancienne version reste en ligne). Dépendances npm limitées au strict nécessaire ; Vercel n'installe que les dépendances de production (`npm ci --omit=dev`).
 6. Répondre et commenter en français.
+7. **Tenir `ETAT.md` à jour après CHAQUE modification** (demande du propriétaire, 11 nov. 2026) : date de dernière mise à jour, tableaux « ce qui marche / ce qui n'est pas actif », listes « à faire » (propriétaire / Claude), nombre de tests, et une ligne au journal. Le fichier est commité et poussé avec la modification elle-même, jamais après coup.
 
 ## Architecture
 ```

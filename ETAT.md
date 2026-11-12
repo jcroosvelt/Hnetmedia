@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : page article refaite en mise en page « feuille » (photo pleine largeur, feuille arrondie, barre d'actions flottante).
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : interligne 1,20 sur tout le site, l'admin et l'éditeur.
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -74,6 +74,7 @@
 
 | Date | Modification |
 |---|---|
+| 12 nov. | **Interligne 1,20** sur tout le site (public, admin, éditeur, articles publiés) à la demande du propriétaire : toute valeur supérieure à 1,20 dans `style.css`, `article-body.css`, `article.css`, `comments.css`, `admin.css` et `admin.js` est ramenée à 1,20 ; les titres et pastilles déjà plus serrés (1 à 1,18) sont conservés |
 | 12 nov. | **Page article refaite** (demande du propriétaire, modèle fourni : mise en page seulement, couleurs et polices inchangées) : photo pleine largeur avec retour, feuille blanche aux coins arrondis qui la chevauche, pastille de rubrique, titre Playfair, ligne d'auteur (photo, nom, date, temps de lecture), barre d'actions flottante (commentaires avec compteur réel, WhatsApp, Facebook, X, copier le lien). Aucune donnée inventée (pas de « J'aime », ni de compteur de lectures, ni de « Suivre »). Nouvelle feuille `assets/article.css` ; `style.css` intact |
 | 12 nov. | Éditeur : interligne simple (1). Notifications « article publié / sponsorisé » : le lien ouvre l'article **dans l'admin** (la page publique n'existe qu'après la reconstruction du site, d'où un 404 si on touchait la notification trop tôt) |
 | 12 nov. | Admin : compléments pour WebView ancien (`Array.at/findLast`, `Object.hasOwn`, `replaceAll`…) avant l'éditeur ; toute erreur inattendue de la page s'affiche en bandeau (diagnostic des brouillons qui ne s'ouvraient pas dans l'appli Android) |

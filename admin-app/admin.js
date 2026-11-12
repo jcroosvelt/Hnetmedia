@@ -973,8 +973,8 @@
           body.innerHTML = ed.getHTML(); // HTML déjà normalisé par le schéma de l'éditeur
           box.appendChild(h("p", { class: "hn-muted", text: "Aperçu — présentation indicative (" + cur.toUpperCase() + ")" }));
           if (t.kicker) box.appendChild(h("p", { class: "hn-muted", style: "text-transform:uppercase;letter-spacing:1px;margin-top:10px", text: t.kicker }));
-          box.appendChild(h("h1", { style: "font-family:'Playfair Display',serif;font-size:26px;line-height:1.25;color:var(--navy);margin:6px 0 10px", text: t.title || "(sans titre)" }));
-          if (t.excerpt) box.appendChild(h("p", { style: "font-size:15px;color:var(--gray-dk);line-height:1.7;margin-bottom:16px", text: t.excerpt }));
+          box.appendChild(h("h1", { style: "font-family:'Playfair Display',serif;font-size:26px;line-height:1.2;color:var(--navy);margin:6px 0 10px", text: t.title || "(sans titre)" }));
+          if (t.excerpt) box.appendChild(h("p", { style: "font-size:15px;color:var(--gray-dk);line-height:1.2;margin-bottom:16px", text: t.excerpt }));
           box.appendChild(body);
           box.appendChild(h("div", { class: "hn-actions" }, h("button", { type: "button", class: "hn-btn hn-btn-navy", text: "Fermer", onclick: function () { close(null); } })));
         }, true);
@@ -1441,7 +1441,7 @@
       }
       clear(view);
       view.appendChild(heading("Comptes", "Chaque personne a le rôle qui lui donne le minimum de droits nécessaires.", h("button", { type: "button", class: "hn-btn hn-btn-primary", text: "+ Nouveau compte", onclick: create })));
-      view.appendChild(h("div", { class: "hn-card" }, h("h2", { text: "Droits par rôle" }), h("ul", { style: "list-style:none;font-size:13px;line-height:1.8" }, S.meta.roles.map(function (r) { return h("li", null, h("strong", { text: r.label + " : " }), r.description); }))));
+      view.appendChild(h("div", { class: "hn-card" }, h("h2", { text: "Droits par rôle" }), h("ul", { style: "list-style:none;font-size:13px;line-height:1.2" }, S.meta.roles.map(function (r) { return h("li", null, h("strong", { text: r.label + " : " }), r.description); }))));
       view.appendChild(box);
       return load();
     });

@@ -380,7 +380,7 @@ test("admin : abonnés, export CSV et statistiques", async () => {
 test("health : état minimal, sans fuite", async () => {
   const r = await call("GET", "/api/health");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true, siteUrl: "https://www.hnetmedia.com" }, "le test configure un faux Deploy Hook et une adresse de site");
+  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true, push: false, siteUrl: "https://www.hnetmedia.com" }, "le test configure un faux Deploy Hook et une adresse de site ; pas de clé Firebase");
   assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
   assert.equal((await call("POST", "/api/health")).status, 405);
 });

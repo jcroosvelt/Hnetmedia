@@ -18,5 +18,5 @@ module.exports = handler(["GET", "POST"], async (req, res) => {
   const given = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!given || !safeEqual(given, secret)) throw new HttpError(401, "Non autorisé.");
   const r = await scheduled.run();
-  send(res, 200, { ok: true, promoted: r.promoted.length, slugs: r.promoted, blocked: r.blocked, rebuild: r.rebuild });
+  send(res, 200, { ok: true, promoted: r.promoted.length, slugs: r.promoted, blocked: r.blocked, rebuild: r.rebuild, reminded: r.reminded });
 });

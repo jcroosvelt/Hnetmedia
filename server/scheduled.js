@@ -8,6 +8,7 @@
  */
 const { getDb } = require("./db");
 const { triggerRebuild } = require("./deploy-hook");
+const push = require("./push");
 
 async function promoteDue() {
   const db = getDb();
@@ -37,12 +38,41 @@ async function housekeeping() {
   await db.query(`INSERT INTO site_settings (key, value) VALUES ('scheduledLastRun', to_jsonb(now())) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
 }
 
+/**
+ * Rappels push : messages de contact « nouveau » non traités. Chaque message est « réclamé » de façon atomique
+ * (colonne push_reminded_at) : premier rappel après 30 min, puis au plus toutes les 2 h, 3 rappels maximum.
+ * Sans configuration push, on ne touche à rien (les compteurs ne sont pas consommés).
+ */
+async function remindPending() {
+  if (!push.isConfigured()) return 0;
+  const rows = await getDb().query(`
+    UPDATE contact_messages SET push_reminded_at = now(), push_reminders = push_reminders + 1
+    WHERE status = 'nouveau' AND push_reminders < 3 AND (
+      (push_reminded_at IS NULL AND created_at < now() - interval '30 minutes')
+      OR push_reminded_at < now() - interval '2 hours')
+    RETURNING id`);
+  if (!rows.length) return 0;
+  await push.notify({
+    permission: "contact.read", channel: "messages", title: "Rappel : messages à traiter",
+    body: rows.length === 1 ? "1 message de contact attend une réponse." : `${rows.length} messages de contact attendent une réponse.`,
+    url: "/admin#/messages",
+  });
+  return rows.length;
+}
+
 async function run() {
   const r = await promoteDue();
   await housekeeping();
   let rebuild = false;
-  if (r.promoted.length) rebuild = await triggerRebuild(`publication programmée : ${r.promoted.join(", ")}`);
-  return { ...r, rebuild };
+  if (r.promoted.length) {
+    rebuild = await triggerRebuild(`publication programmée : ${r.promoted.join(", ")}`);
+    const titles = await getDb().query(
+      `SELECT a.slug, t.title FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
+       WHERE a.slug = ANY($1::text[])`, [r.promoted]);
+    for (const x of titles) await push.notify({ channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
+  }
+  const reminded = await remindPending();
+  return { ...r, rebuild, reminded };
 }
 
-module.exports = { run, promoteDue };
+module.exports = { run, promoteDue, remindPending };

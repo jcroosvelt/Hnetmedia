@@ -14,6 +14,7 @@ const antispam = require("../server/antispam");
 const { limit } = require("../server/ratelimit");
 const { clientIp, fingerprint, checkOrigin, randomToken, sha256 } = require("../server/security");
 const email = require("../server/email");
+const push = require("../server/push");
 const { siteUrl, NEWSLETTER_CONSENT } = require("../server/site");
 
 const CONFIRM_HOURS = 48;
@@ -72,6 +73,7 @@ async function confirm(req, res) {
      WHERE confirm_token_hash = $1 AND confirm_expires_at > now() AND status = 'en_attente'
      RETURNING id`, [sha256(token)]);
   if (!rows.length) throw new HttpError(400, "Ce lien de confirmation est invalide ou a expiré. Inscrivez-vous à nouveau pour recevoir un nouveau lien.");
+  await push.notify({ permission: "subscriber.read", channel: "messages", title: "Nouvel abonné", body: "Une personne vient de confirmer son inscription à la newsletter.", url: "/admin#/abonnes" });
   send(res, 200, { ok: true, message: "Votre inscription est confirmée. Merci de suivre HNet Media !" });
 }
 

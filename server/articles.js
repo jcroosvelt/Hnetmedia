@@ -6,6 +6,7 @@ const v = require("./validate");
 const { cleanHtml, plainText } = require("./sanitize");
 const { can, audit } = require("./auth");
 const { triggerRebuild } = require("./deploy-hook");
+const push = require("./push");
 
 const LANGS = ["fr", "en"];
 const TYPES = ["information", "opinion", "tribune", "editorial", "analyse"];
@@ -260,6 +261,13 @@ async function setStatus(s, id, body) {
   await audit(s.user.id, `article.statut.${status}`, "article", id, { avant: a.status, publishedAt });
   // Rebuild si la partie publique change (publication, dépublication, archivage).
   const rebuilt = (status === "publie" || a.status === "publie") ? await triggerRebuild(`statut ${a.slug} → ${status}`) : false;
+  // Notification push à l'équipe (article publié ou programmé) ; n'annule jamais la publication.
+  if ((status === "publie" || status === "programme") && a.status !== status) {
+    const tr = (await db.query("SELECT title FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
+    await push.notify(status === "publie"
+      ? { channel: "publication", title: "Article publié", body: (tr && tr.title) || a.slug, url: `/article/${a.slug}` }
+      : { channel: "publication", title: "Article programmé", body: `${(tr && tr.title) || a.slug} — ${new Date(publishedAt).toLocaleString("fr-FR", { timeZone: "America/Port-au-Prince", dateStyle: "short", timeStyle: "short" })}`, url: "/admin#/articles" });
+  }
   return { ...(await get(s, id)), rebuildTriggered: rebuilt };
 }
 

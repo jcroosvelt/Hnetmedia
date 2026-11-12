@@ -149,6 +149,15 @@
         });
       });
   }
+  /* ───────── Notifications push (application Android) ─────────
+     L'application appelle window.onFcmToken(jeton) ; on l'enregistre dès qu'une session est ouverte
+     et on le retire à la déconnexion. Dans un navigateur ordinaire, rien ne se passe. */
+  var fcmToken = window.__fcmToken || null;
+  function registerDevice() {
+    if (!fcmToken || !S.user || !S.csrf) return;
+    api("POST", "devices", { token: fcmToken }, { quiet401: true }).catch(function () { /* nouvel essai au prochain chargement */ });
+  }
+  window.onFcmToken = function (t) { if (typeof t === "string" && t) { fcmToken = t; registerDevice(); } };
   function sessionLost() {
     if (!S.user) return;
     S.user = null; S.csrf = null; S.perms = new Set(); guard = null;
@@ -223,6 +232,7 @@
   function loadSession() {
     return api("GET", "auth/session", undefined, { quiet401: true }).then(function (r) {
       S.user = r.user; S.csrf = r.csrfToken; S.perms = new Set(r.permissions);
+      registerDevice();
     });
   }
   // L'éditeur (≈ 440 Ko) n'est téléchargé qu'à l'ouverture d'un article.
@@ -326,7 +336,8 @@
 
   function logout() {
     if (guard && !guard()) return;
-    api("POST", "auth/logout", {}).catch(function () { /* déjà déconnecté */ }).then(function () {
+    (fcmToken ? api("DELETE", "devices", { token: fcmToken }, { quiet401: true }).catch(function () {}) : Promise.resolve())
+      .then(function () { return api("POST", "auth/logout", {}); }).catch(function () { /* déjà déconnecté */ }).then(function () {
       S.user = null; S.csrf = null; S.perms = new Set(); S.meta = null; guard = null;
       if (cleanup) { cleanup(); cleanup = null; }
       location.hash = "";
@@ -1723,7 +1734,7 @@
 
   /* ───────── Démarrage ───────── */
   api("GET", "auth/session", undefined, { quiet401: true })
-    .then(function (r) { S.user = r.user; S.csrf = r.csrfToken; S.perms = new Set(r.permissions); start(); })
+    .then(function (r) { S.user = r.user; S.csrf = r.csrfToken; S.perms = new Set(r.permissions); registerDevice(); start(); })
     .catch(function (x) {
       if (x.status === 401) { if (x.data && x.data.needsSetup) renderSetup(); else renderLogin(); return; }
       clear(app);

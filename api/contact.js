@@ -12,6 +12,7 @@ const { limit } = require("../server/ratelimit");
 const { clientIp, fingerprint, checkOrigin } = require("../server/security");
 const email = require("../server/email");
 const { DEFAULT_CONTACT_CATEGORIES } = require("../server/site");
+const push = require("../server/push");
 
 module.exports = handler(["POST"], async (req, res) => {
   checkOrigin(req);
@@ -50,6 +51,12 @@ module.exports = handler(["POST"], async (req, res) => {
       replyTo: msg.email,
     }).catch((err) => console.error("[contact] notification non envoyée :", err.status || ""));
   }
+
+  // Notification push à l'équipe (facultative, n'annule jamais l'enregistrement ; sans le contenu du message).
+  await push.notify({
+    permission: "contact.read", channel: "messages", title: "Nouveau message de contact",
+    body: `${msg.name} — ${msg.subject || msg.category}`, url: "/admin#/messages",
+  });
 
   send(res, 200, { ok: true, message: "Votre message a bien été reçu. La rédaction vous répondra par e-mail." });
 });

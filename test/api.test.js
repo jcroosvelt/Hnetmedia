@@ -925,3 +925,68 @@ test("rubriques : libellés FR/EN modifiables, droits, ordre dans le menu ; imag
   assert.equal((await as(editeur, "GET", "/api/admin/media/unused")).json.count, 0);
   assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'media.nettoyage'")).length === 1, "nettoyage journalisé");
 });
+
+/* ═════════════════════════ NOTIFICATIONS PUSH (appli Android) ═════════════════════════ */
+test("push : appareils, déclencheurs, rappels sans doublon, jamais bloquant", async () => {
+  process.env.FCM_TEST_SINK = "1";
+  global.__pushSent = [];
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 200);
+  const T1 = "token-appareil-de-test-0123456789-abcdef";
+  const sentTo = () => global.__pushSent.filter((x) => x.token === T1);
+
+  // enregistrement du jeton : session + CSRF + jeton valide, sans doublon
+  assert.equal((await call("POST", "/api/admin/devices", { body: { token: T1 } })).status, 401, "sans session");
+  assert.equal((await call("POST", "/api/admin/devices", { body: { token: T1 }, cookie: admin.cookie })).status, 403, "sans CSRF");
+  assert.equal((await as(admin, "POST", "/api/admin/devices", { token: "court" })).status, 400, "jeton trop court");
+  assert.equal((await as(admin, "POST", "/api/admin/devices", { token: T1 })).status, 200);
+  assert.equal((await as(admin, "POST", "/api/admin/devices", { token: T1 })).status, 200);
+  assert.equal((await db().query("SELECT count(*)::int n FROM device_tokens"))[0].n, 1, "un seul enregistrement par jeton");
+
+  // nouveau message de contact → notification (sans le texte du message)
+  const ok = { name: "Paul Louis", email: "paul@example.org", category: "Rédaction", subject: "Info push", message: "Texte secret du message de test.", hp: "", ts: formTs() };
+  assert.equal((await call("POST", "/api/contact", { body: ok, headers: ip(250) })).status, 200);
+  let n = sentTo();
+  assert.equal(n.length, 1);
+  assert.equal(n[0].data.channel, "messages");
+  assert.ok(n[0].data.title.includes("message") && n[0].data.body.includes("Paul Louis"));
+  assert.ok(!JSON.stringify(n[0].data).includes("secret"), "le contenu du message n'est jamais envoyé à Firebase");
+  assert.equal(n[0].data.url, "/admin#/messages");
+
+  // publication manuelle → notification « publication »
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Article push", category: "culture" })).json.article;
+  assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Article push", content: "<p>Texte complet.</p>" } }, authorName: "Rédaction" })).status, 200);
+  const before = sentTo().length;
+  assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+  const pub = sentTo().slice(before);
+  assert.equal(pub.length, 1);
+  assert.equal(pub[0].data.channel, "publication");
+  assert.ok(pub[0].data.url.startsWith("/article/"));
+
+  // rappels : un seul par message dans la fenêtre, 3 au maximum
+  await db().query("UPDATE contact_messages SET status = 'traite'");
+  await db().query(`INSERT INTO contact_messages (name, email, category, message, status, created_at)
+                    VALUES ('Ancien', 'a@example.org', 'Rédaction', 'Message ancien non traité', 'nouveau', now() - interval '1 hour')`);
+  const { remindPending } = require("../server/scheduled");
+  const c0 = sentTo().length;
+  assert.equal(await remindPending(), 1);
+  assert.equal(sentTo().length, c0 + 1);
+  assert.equal(await remindPending(), 0, "pas de doublon tout de suite");
+  await db().query("UPDATE contact_messages SET push_reminded_at = now() - interval '3 hours' WHERE name = 'Ancien'");
+  assert.equal(await remindPending(), 1, "2e rappel après 2 h");
+  await db().query("UPDATE contact_messages SET push_reminded_at = now() - interval '3 hours', push_reminders = 3 WHERE name = 'Ancien'");
+  assert.equal(await remindPending(), 0, "3 rappels maximum");
+
+  // suppression du jeton à la déconnexion
+  assert.equal((await as(admin, "DELETE", "/api/admin/devices", { token: T1 })).status, 200);
+  assert.equal((await db().query("SELECT count(*)::int n FROM device_tokens"))[0].n, 0);
+
+  // sans configuration push : le formulaire de contact fonctionne toujours et les rappels ne consomment rien
+  delete process.env.FCM_TEST_SINK;
+  await db().query("INSERT INTO device_tokens (user_id, token) SELECT id, $1 FROM users LIMIT 1", [T1]);
+  const c1 = sentTo().length;
+  assert.equal((await call("POST", "/api/contact", { body: ok, headers: ip(251) })).status, 200);
+  assert.equal(sentTo().length, c1, "rien envoyé sans clé Firebase");
+  await db().query("UPDATE contact_messages SET status='nouveau', push_reminders = 0, push_reminded_at = NULL, created_at = now() - interval '2 hours' WHERE name = 'Ancien'");
+  assert.equal(await remindPending(), 0);
+  assert.equal((await db().query("SELECT push_reminders FROM contact_messages WHERE name = 'Ancien'"))[0].push_reminders, 0, "compteur de rappels intact");
+});

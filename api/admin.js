@@ -29,6 +29,7 @@
  * Pages fixes (settings.manage) : GET|PUT|DELETE pages[/:slug] — texte d'origine rétabli par DELETE
  * Équipe / partenaires / offres / réglages (permissions author.manage, partner.manage, job.manage, settings.manage)
  *   GET|POST team, partners, jobs   PUT|DELETE team/:id, partners/:id, jobs/:id   GET|PUT settings
+ * Notifications push (appli Android) : POST|DELETE devices { token } — jeton FCM de l'appareil connecté
  * Comptes
  *   GET users   POST users   PATCH users/:id
  * Toute requête qui modifie exige : session valide + en-tête X-CSRF-Token + Origin du site.
@@ -43,6 +44,8 @@ const catalog = require("../server/catalog");
 const pages = require("../server/pages");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
+
+const MAX_DEVICES_PER_USER = 10;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ARTICLE_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -395,7 +398,32 @@ async function usersRoute(req, res, parts) {
   throw new HttpError(404, "Route inconnue.");
 }
 
+/* ── Appareils pour les notifications push (application Android) ── */
+async function devicesRoute(req, res) {
+  const s = await auth.requireAuth(req);
+  const body = await readBody(req);
+  const token = v.str(body, "token", { min: 20, max: 4096, label: "Jeton" });
+  const db = getDb();
+  if (req.method === "POST") {
+    await db.query(
+      `INSERT INTO device_tokens (user_id, token, user_agent) VALUES ($1, $2, $3)
+       ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, last_seen_at = now()`,
+      [s.user.id, token, String(req.headers["user-agent"] || "").slice(0, 300)]);
+    // Garde les 10 appareils les plus récents du compte.
+    await db.query(
+      `DELETE FROM device_tokens WHERE user_id = $1 AND id NOT IN (
+         SELECT id FROM device_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT ${MAX_DEVICES_PER_USER})`, [s.user.id]);
+    return send(res, 200, { ok: true });
+  }
+  if (req.method === "DELETE") {
+    await db.query("DELETE FROM device_tokens WHERE token = $1 AND user_id = $2", [token, s.user.id]);
+    return send(res, 200, { ok: true });
+  }
+  throw new HttpError(405, "Méthode non autorisée.");
+}
+
 const ROUTES = {
+  devices: devicesRoute,
   articles: articlesRoute,
   "contact-messages": contactRoute,
   subscribers: subscribersRoute,

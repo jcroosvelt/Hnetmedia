@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 11 novembre 2026** · Dernier changement : règle de flux de travail (push direct sur `main`).
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : notifications push vers l'application Android (côté site).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -21,6 +21,7 @@
 | Pages fixes (6) | ✅ | À propos, Charte, Publicité, CGU, Confidentialité, Cookies : modifiables en FR et EN |
 | Réglages | ✅ | Nom, slogan, réseaux sociaux, mentions légales, types de demande, textes anglais |
 | Favicon et icônes | ✅ | Symbole réel du logo |
+| Notifications push (appli Android) | ⚠️ Code prêt, inactif tant que la clé Firebase n'est pas dans Vercel | Nouveau message de contact, nouvel abonné confirmé, article publié / programmé ; rappels des messages non traités (30 min puis toutes les 2 h, 3 maximum) via le cron existant ; testé avec un faux Firebase, pas encore sur un vrai téléphone |
 
 ## 2. Ce qui n'est PAS actif (et pourquoi)
 
@@ -41,6 +42,7 @@
 - [ ] Décider du sort des **adresses e-mail** affichées (garder, remplacer ou retirer)
 - [ ] **Acheter le nom de domaine** (puis changer `SITE_URL` dans Vercel et vérifier le domaine chez Resend)
 - [ ] (Facultatif) Ajouter la clé **Resend** pour recevoir les messages de contact par e-mail
+- [ ] **Activer les notifications push** : dans Vercel, ajouter `FCM_SERVICE_ACCOUNT_JSON` (contenu de la clé privée du compte de service Firebase, jamais dans GitHub) et `FCM_PROJECT_ID` = `jc-multimedia-admin`, puis redéployer ; installer la dernière APK et se connecter à `/admin` dans l'appli
 - [ ] (Facultatif) Fournir une **image de marque haute définition** (le logo fait 280 px) pour l'aperçu de partage
 
 ## 4. À faire par moi (Claude), quand le propriétaire le demande
@@ -60,14 +62,15 @@
 
 ## 6. Qualité
 
-- Tests automatiques : **19 tests API** et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
+- Tests automatiques : **20 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
 - La construction du site échoue si une phrase de l'interface n'a pas de traduction anglaise
-- Base de production : migrations **0001 à 0007** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
+- Base de production : migrations **0001 à 0008** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
 
 ## 7. Journal des modifications (le plus récent en haut)
 
 | Date | Modification |
 |---|---|
+| 12 nov. | Notifications push pour l'appli Android : table `device_tokens` (migration 0008), `POST/DELETE /api/admin/devices`, `server/push.js` (Firebase HTTP v1), déclencheurs contact / abonné / publication, rappels dans `/api/scheduled` |
 | 11 nov. | Création de ce fichier d'état |
 | 10 nov. | **Version anglaise** (`/en`), rubriques modifiables, URLs propres sans `.html`, créole retiré, nettoyage des images inutilisées, image de partage, style des pages fixes et du contact |
 | 10 nov. | **Refonte de l'interface publique** : accueil, en-tête, cartes, pied de page ; mesure des lectures enfin branchée |

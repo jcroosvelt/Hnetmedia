@@ -270,7 +270,7 @@ async function setStatus(s, id, body) {
   if ((status === "publie" || status === "programme") && a.status !== status) {
     const tr = (await db.query("SELECT title FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
     await push.notify(status === "publie"
-      ? { permission: "article.edit_any", channel: "publication", title: "Article publié", body: (tr && tr.title) || a.slug, url: `/article/${a.slug}` }
+      ? { permission: "article.edit_any", channel: "publication", title: "Article publié", body: (tr && tr.title) || a.slug, url: `/admin#/articles/${id}` }
       : { permission: "article.edit_any", channel: "publication", title: "Article programmé", body: `${(tr && tr.title) || a.slug} — ${new Date(publishedAt).toLocaleString("fr-FR", { timeZone: "America/Port-au-Prince", dateStyle: "short", timeStyle: "short" })}`, url: "/admin#/articles" });
   }
   // Retour à l'auteur (journaliste, contributeur…) quand quelqu'un d'autre agit sur son article.
@@ -281,7 +281,7 @@ async function setStatus(s, id, body) {
     if (status === "publie") {
       const en = (await db.query("SELECT 1 FROM article_translations WHERE article_id = $1 AND lang = 'en' AND NOT reviewed AND btrim(title) <> ''", [id]))[0];
       if (en && a.original_lang !== "en") await push.notify({ permission: "translation.edit", excludeUserId: s.user.id, channel: "publication", title: "Traduction anglaise à valider", body: await titleOf(a), url: `/admin#/articles/${id}` });
-      if (a.sponsored) await push.notify({ permission: "article.sponsor", excludeUserId: s.user.id, channel: "publication", title: "Article sponsorisé publié", body: await titleOf(a), url: `/article/${a.slug}` });
+      if (a.sponsored) await push.notify({ permission: "article.sponsor", excludeUserId: s.user.id, channel: "publication", title: "Article sponsorisé publié", body: await titleOf(a), url: `/admin#/articles/${id}` });
     }
   }
   return { ...(await get(s, id)), rebuildTriggered: rebuilt };

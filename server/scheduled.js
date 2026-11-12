@@ -97,9 +97,9 @@ async function run() {
   if (r.promoted.length) {
     rebuild = await triggerRebuild(`publication programmée : ${r.promoted.join(", ")}`);
     const titles = await getDb().query(
-      `SELECT a.slug, t.title FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
+      `SELECT a.id, a.slug, t.title FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
        WHERE a.slug = ANY($1::text[])`, [r.promoted]);
-    for (const x of titles) await push.notify({ permission: "article.edit_any", channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
+    for (const x of titles) await push.notify({ permission: "article.edit_any", channel: "publication", title: "Article publié", body: x.title, url: `/admin#/articles/${x.id}` });
   }
   const reminded = (await remindPending()) + (await remindReviews()) + (await warnBlocked()) + (await commentsSvc.remindPending());
   return { ...r, rebuild, reminded };

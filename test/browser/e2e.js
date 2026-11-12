@@ -50,7 +50,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.waitForSelector(".hn-alert:not([hidden])"); ok(/incorrects/i.test(await page.textContent(".hn-alert")), "mauvais identifiants refusés");
     await page.fill("#l-email", loginEmail); await page.fill("#l-pw", "un mot de passe solide 2026"); await page.click("button[type=submit]");
     await page.waitForSelector(".hn-tabs a"); ok(true, "connexion réussie");
-    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 14 && tabs[0] === "Tableau de bord", "onglets administrateur : " + tabs.join(", "));
+    const tabs = await page.$$eval(".hn-tabs a", (a) => a.map((x) => x.textContent)); ok(tabs.length === 15 && tabs[0] === "Tableau de bord", "onglets administrateur : " + tabs.join(", "));
     // le tableau de bord est la page d'accueil : chiffres réels, aucune donnée inventée
     await page.waitForSelector(".hn-kpi"); ok(/Tableau de bord/.test(await page.textContent(".hn-h1")) && (await page.locator(".hn-kpi").count()) === 4 && (await page.locator(".hn-kpi.dark").count()) === 1, "tableau de bord : titre, 4 indicateurs (le premier en avant)");
     ok((await page.locator(".hn-donut").count()) === 1 && (await page.locator(".hn-rank, .hn-ghost").count()) >= 3, "tableau de bord : classements (ou état vide honnête), répartition des articles");

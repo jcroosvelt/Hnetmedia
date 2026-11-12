@@ -25,7 +25,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
   await page.waitForSelector(".hn-table, .empty-state");
   ok(!(await page.isVisible("text=Titre de l'article (exemple")), "ne voit pas les articles des autres (ni le brouillon-modèle)");
   await page.click("text=+ Nouvel article"); await page.fill("#dlg-title", "Mon brouillon de contributeur"); await page.click(".hn-dlg button[type=submit]"); await page.waitForSelector(".hn-ed-prose");
-  ok(!(await page.isVisible(".wd-publish")) && !(await page.isVisible("text=Archiver")) && !(await page.isVisible("text=Supprimer définitivement")), "pas de menu Publier, ni Archiver, ni Supprimer");
+  ok(/Soumettre/.test((await page.textContent(".wd-publish").catch(() => "")) || "") && !(await page.isVisible("text=Publier maintenant")) && !(await page.isVisible("text=Archiver")) && !(await page.isVisible("text=Supprimer définitivement")), "« Soumettre » à la place de « Publier » ; ni Publier maintenant, ni Archiver, ni Supprimer");
   // le contributeur peut tout de même illustrer son brouillon (droit « téléverser »)
   await page.click('.wd-tab[data-tab=insertion]'); await page.click(".hn-ed-ins-image"); await page.waitForSelector("#img-alt");
   const png = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 800; c.height = 500; const x = c.getContext("2d"); x.fillStyle = "#FF6B00"; x.fillRect(0, 0, 800, 500); return c.toDataURL("image/png").split(",")[1]; });

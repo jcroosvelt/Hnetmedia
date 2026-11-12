@@ -140,6 +140,8 @@
 .wd-rev{margin:6px 0 0}
 .hn-ed-content{padding:0;min-height:48vh;cursor:text}
 .hn-ed-prose{outline:none;min-height:48vh;caret-color:var(--orange)}
+/* Interligne simple (1) dans l'éditeur ; le texte publié garde sa propre typographie (article-body.css). */
+.hn-ed-prose,.hn-ed-prose.article-body{line-height:1}
 .hn-ed-prose:focus{outline:none;border:0}
 .hn-ed-prose p.is-editor-empty:first-child::before{content:attr(data-placeholder);float:left;height:0;pointer-events:none;color:var(--gray-md)}
 .hn-ed-prose .ProseMirror-selectednode{outline:2px solid var(--orange);outline-offset:3px}

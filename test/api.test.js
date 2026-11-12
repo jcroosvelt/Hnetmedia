@@ -961,7 +961,7 @@ test("push : appareils, déclencheurs, rappels sans doublon, jamais bloquant", a
   const pub = sentTo().slice(before);
   assert.equal(pub.length, 1);
   assert.equal(pub[0].data.channel, "publication");
-  assert.ok(pub[0].data.url.startsWith("/article/"));
+  assert.ok(pub[0].data.url.startsWith("/admin#/articles/"), "lien vers l'admin : la page publique n'existe qu'après la reconstruction du site");
 
   // rappels : un seul par message dans la fenêtre, 3 au maximum
   await db().query("UPDATE contact_messages SET status = 'traite'");

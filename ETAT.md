@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : admin plus robuste dans les WebView Android anciens (compléments JavaScript) et erreurs de page affichées.
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : interligne 1 dans l'éditeur ; notifications de publication ouvrent l'admin (plus de 404).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -66,7 +66,7 @@
 
 ## 6. Qualité
 
-- Tests automatiques : **23 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
+- Tests automatiques : **23 tests API** (dont push) ; vérifications navigateur `e2e` et `roles` relancées et passées (attentes mises à jour : onglet Commentaires, bouton « Soumettre ») et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
 - La construction du site échoue si une phrase de l'interface n'a pas de traduction anglaise
 - Base de production : migrations **0001 à 0010** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
 
@@ -74,6 +74,7 @@
 
 | Date | Modification |
 |---|---|
+| 12 nov. | Éditeur : interligne simple (1). Notifications « article publié / sponsorisé » : le lien ouvre l'article **dans l'admin** (la page publique n'existe qu'après la reconstruction du site, d'où un 404 si on touchait la notification trop tôt) |
 | 12 nov. | Admin : compléments pour WebView ancien (`Array.at/findLast`, `Object.hasOwn`, `replaceAll`…) avant l'éditeur ; toute erreur inattendue de la page s'affiche en bandeau (diagnostic des brouillons qui ne s'ouvraient pas dans l'appli Android) |
 | 12 nov. | `/api/health` expose `push` (oui/non : clé Firebase présente et lisible) pour vérifier la configuration sans rien dévoiler |
 | 12 nov. | **Commentaires des lecteurs** : migration 0010 (table `comments`, permission `comment.moderate`), `/api/comments`, section sous les articles (`assets/comments.js` + `comments.css`), onglet `/admin › Commentaires`, interrupteur dans Réglages, rappels push |

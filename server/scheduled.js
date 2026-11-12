@@ -9,6 +9,7 @@
 const { getDb } = require("./db");
 const { triggerRebuild } = require("./deploy-hook");
 const push = require("./push");
+const commentsSvc = require("./comments");
 
 async function promoteDue() {
   const db = getDb();
@@ -100,7 +101,7 @@ async function run() {
        WHERE a.slug = ANY($1::text[])`, [r.promoted]);
     for (const x of titles) await push.notify({ permission: "article.edit_any", channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
   }
-  const reminded = (await remindPending()) + (await remindReviews()) + (await warnBlocked());
+  const reminded = (await remindPending()) + (await remindReviews()) + (await warnBlocked()) + (await commentsSvc.remindPending());
   return { ...r, rebuild, reminded };
 }
 

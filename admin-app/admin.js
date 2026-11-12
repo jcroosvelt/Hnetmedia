@@ -295,6 +295,7 @@
     if (can("job.manage")) t.push(["#/offres", "Offres d'emploi", "case", "Contenu"]);
     if (can("taxonomy.manage")) t.push(["#/rubriques", "Rubriques", "grid", "Contenu"]);
     if (can("contact.read")) t.push(["#/messages", "Messages", "mail", "Lecteurs"]);
+    if (can("comment.moderate")) t.push(["#/commentaires", "Commentaires", "mail", "Lecteurs"]);
     if (can("subscriber.read") || can("stats.read")) t.push(["#/abonnes", "Abonnés", "users", "Lecteurs"]);
     if (can("stats.read")) t.push(["#/stats", "Statistiques", "chart", "Lecteurs"]);
     if (can("settings.manage")) t.push(["#/pages", "Pages du site", "doc", "Administration"]);
@@ -362,6 +363,7 @@
     else if (parts[0] === "articles" && parts[1]) run = function () { return renderArticle(view, parts[1]); };
     else if (parts[0] === "articles") run = function () { return renderArticles(view); };
     else if (parts[0] === "messages") run = function () { return renderMessages(view); };
+    else if (parts[0] === "commentaires" && can("comment.moderate")) run = function () { return renderComments(view); };
     else if (parts[0] === "abonnes") run = function () { return renderSubscribers(view); };
     else if (parts[0] === "stats" && can("stats.read")) run = function () { return renderStats(view); };
     else if (parts[0] === "medias" && can("media.upload")) run = function () { return renderMedia(view); };
@@ -1113,6 +1115,55 @@
     return load();
   }
 
+  /* ───────── Commentaires des lecteurs (modération) ───────── */
+  function renderComments(view) {
+    var LAB = { en_attente: "À modérer", approuve: "Publiés", refuse: "Refusés", spam: "Indésirables" };
+    var filter = h("select", { "aria-label": "Statut" }, [["en_attente", "À modérer"], ["approuve", "Publiés"], ["refuse", "Refusés"], ["spam", "Indésirables"], ["", "Tous"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    var counts = h("div", { class: "hn-chips", style: "margin-bottom:12px" });
+    var box = h("div");
+    function act(c, method, path, body, okMsg) {
+      return api(method, "comments/" + c.id + (path || ""), body).then(function () { toast(okMsg); load(); }).catch(function (x) { toast(x.message, true); });
+    }
+    function load() {
+      return api("GET", "comments" + (filter.value ? "?status=" + filter.value : "")).then(function (r) {
+        clear(counts);
+        Object.keys(LAB).forEach(function (k) { counts.appendChild(h("span", { class: "tag", text: LAB[k] + " : " + ((r.counts || {})[k] || 0) })); });
+        clear(box);
+        if (!r.items.length) { box.appendChild(h("div", { class: "empty-state" }, h("div", { class: "es-icon", text: "💬" }), h("h3", { text: "Aucun commentaire" }), h("p", { text: filter.value === "en_attente" ? "Rien à modérer pour le moment." : "Les commentaires des lecteurs apparaîtront ici." }))); return; }
+        r.items.forEach(function (c) {
+          var actions = h("div", { class: "hn-actions", style: "padding:0 14px 14px" });
+          if (c.status !== "approuve" && !c.staff) actions.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-primary hn-btn-sm", text: "Approuver", onclick: function () { act(c, "PATCH", "", { status: "approuve" }, "Commentaire publié."); } }));
+          if (c.status !== "refuse") actions.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Refuser", onclick: function () { act(c, "PATCH", "", { status: "refuse" }, "Commentaire refusé."); } }));
+          if (c.status !== "spam") actions.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Indésirable", onclick: function () { act(c, "PATCH", "", { status: "spam" }, "Marqué indésirable."); } }));
+          if (c.status === "approuve" && !c.parentId && !c.staff) actions.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-navy hn-btn-sm", text: "Répondre en public", onclick: function () {
+            ask("Réponse publique de la rédaction", [{ name: "body", label: "Votre réponse", type: "textarea", required: true }], { submit: "Publier la réponse" }).then(function (v) {
+              if (v) act(c, "POST", "/reply", { body: v.body }, "Réponse publiée.");
+            });
+          } }));
+          actions.appendChild(h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "/article/" + encodeURIComponent(c.articleSlug), target: "_blank", rel: "noopener", text: "Voir l'article" }));
+          if (c.email) actions.appendChild(h("a", { class: "hn-btn hn-btn-ghost hn-btn-sm", href: "mailto:" + encodeURIComponent(c.email).replace(/%40/g, "@"), text: "Écrire au lecteur" }));
+          actions.appendChild(h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm", text: "Supprimer", onclick: function () {
+            confirmBox("Ce commentaire sera supprimé définitivement.", { title: "Supprimer ?", confirm: "Supprimer" }).then(function (ok) { if (ok) act(c, "DELETE", "", undefined, "Commentaire supprimé."); });
+          } }));
+          var head = h("div", { class: "hn-msg-h" },
+            h("div", null,
+              h("strong", { text: c.name }), c.staff ? h("span", { class: "hn-muted", text: " (rédaction)" }) : null,
+              h("div", { class: "hn-muted", text: (c.parentName ? "Réponse à " + c.parentName + " · " : "") + "sur « " + (c.articleTitle || c.articleSlug) + " » · " + fmt(c.createdAt) })),
+            h("span", { class: "badge " + (c.status === "en_attente" ? "" : "badge-draft"), text: LAB[c.status] || c.status }));
+          var text = h("div", { class: "hn-msg-b" }); text.appendChild(document.createTextNode(c.body));
+          box.appendChild(h("div", { class: "hn-msg" + (c.status === "en_attente" ? " new" : "") }, head, text, actions));
+        });
+      });
+    }
+    filter.addEventListener("change", load);
+    clear(view);
+    view.appendChild(heading("Commentaires", "Les commentaires des lecteurs sont publiés après votre validation. L'adresse e-mail n'est jamais affichée sur le site."));
+    view.appendChild(counts);
+    view.appendChild(h("div", { class: "hn-filters" }, filter));
+    view.appendChild(box);
+    return load();
+  }
+
   /* ───────── Abonnés ───────── */
   function renderSubscribers(view) {
     clear(view);
@@ -1703,6 +1754,8 @@
           SOC.map(function (c) { return field("soc-" + c[0], c[1] + " (https://…)", cur.social[c[0]], { type: "url", max: 300 }); })),
         card("Mentions légales", "Informations juridiques réelles de l'éditeur et de l'hébergeur. Tant qu'elles manquent, la page publique affiche un avis « incomplet ».",
           LEG.map(function (c) { return field("leg-" + c[0], c[1], cur.legal[c[0]], { max: /Address$/.test(c[0]) ? 300 : 200 }); })),
+        card("Commentaires", "Les lecteurs peuvent commenter les articles ; chaque commentaire est publié après votre validation (onglet Commentaires).", [
+          [h("label", { for: "s-comments", style: "display:flex;gap:8px;align-items:center" }, (F.comments = h("input", { id: "s-comments", type: "checkbox", checked: cur.commentsEnabled !== false })), "Commentaires ouverts sur le site")]]),
         card("Formulaire de contact", null, [field("cats", "Types de demande (un par ligne)", (cur.contactCategories || []).join("\n"), { area: true, rows: 6, max: 600, hint: "De 1 à 12 types. Le visiteur choisit l'un d'eux dans le formulaire." })]),
         err,
         h("div", { class: "hn-actions" }, h("button", { type: "submit", class: "hn-btn hn-btn-primary", text: "Enregistrer les réglages" })));
@@ -1711,7 +1764,7 @@
         var social = {}, legal = {};
         SOC.forEach(function (c) { social[c[0]] = F["soc-" + c[0]].value.trim(); });
         LEG.forEach(function (c) { legal[c[0]] = F["leg-" + c[0]].value.trim(); });
-        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, footerText: F.footerText.value, taglineEn: F.taglineEn.value, descriptionEn: F.descriptionEn.value, footerTextEn: F.footerTextEn.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n") })
+        api("PUT", "settings", { siteName: F.siteName.value, tagline: F.tagline.value, description: F.description.value, footerText: F.footerText.value, taglineEn: F.taglineEn.value, descriptionEn: F.descriptionEn.value, footerTextEn: F.footerTextEn.value, social: social, legal: legal, contactCategories: F.cats.value.split("\n"), commentsEnabled: F.comments.checked })
           .then(function () { toast("Réglages enregistrés."); })
           .catch(function (x) { err.textContent = x.message; err.hidden = false; });
       });

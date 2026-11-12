@@ -41,6 +41,7 @@ async function resetDb() {
 
 const routes = {
   "/api/contact": require("../api/contact"),
+  "/api/comments": require("../api/comments"),
   "/api/newsletter": require("../api/newsletter"),
   "/api/views": require("../api/views"),
   "/api/admin": require("../api/admin"),
@@ -231,7 +232,7 @@ test("admin : installation, connexion, sessions, CSRF", async () => {
   r = await call("GET", "/api/admin/auth/session", { cookie: admin.cookie });
   assert.equal(r.status, 200);
   assert.equal(r.json.user.role, "administrateur");
-  assert.equal(r.json.permissions.length, 23);
+  assert.equal(r.json.permissions.length, 24);
 
   const newUser = { email: "chef@hnetmedia.com", name: "Chef", role: "redacteur_en_chef", password: "mot de passe du chef 2026" };
   assert.equal((await call("POST", "/api/admin/users", { body: newUser, cookie: admin.cookie })).status, 403, "sans jeton CSRF");
@@ -1118,4 +1119,142 @@ test("push : retours aux auteurs, traductions, comptes, sécurité, commercial, 
   assert.equal(await warnBlocked(), 0, "une seule alerte");
   assert.ok(got("chef").some((d) => d.title === "Article programmé bloqué" && d.body.includes("bloque-1")));
   delete process.env.FCM_TEST_SINK;
+});
+
+/* ═════════════════════════ COMMENTAIRES DES LECTEURS ═════════════════════════ */
+test("commentaires : dépôt protégé, pré-modération, réponses, droits, notifications, page d'article", async () => {
+  const pw = "un mot de passe solide 2026";
+  const admin = await loginAs("admin@hnetmedia.com", pw, 150);
+  const mkUser = async (email, name, role) => assert.equal((await as(admin, "POST", "/api/admin/users", { email, name, role, password: pw })).status, 201);
+  await mkUser("cm-ed@hnetmedia.com", "Édith Modératrice", "editeur");
+  await mkUser("cm-jr@hnetmedia.com", "Jules Auteur", "journaliste");
+  const ed = await loginAs("cm-ed@hnetmedia.com", pw, 151);
+  const jr = await loginAs("cm-jr@hnetmedia.com", pw, 152);
+
+  // article publié (écrit par le journaliste) + brouillon
+  const mk = async (title, owner, publish, extra = {}) => {
+    const art = (await as(owner, "POST", "/api/admin/articles", { title, category: "culture" })).json.article;
+    assert.equal((await as(owner, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title, content: "<p>Texte de l'article.</p>", ...(extra.en ? {} : {}) }, ...(extra.en ? { en: { title: title + " (EN)", content: "<p>Article text.</p>", reviewed: true } } : {}) }, authorName: "Rédaction" })).status, 200);
+    if (extra.en) assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { en: { title: title + " (EN)", content: "<p>Article text.</p>", reviewed: true } } })).status, 200, "traduction anglaise validée par l'administrateur");
+    if (publish) assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+    return (await as(admin, "GET", `/api/admin/articles/${art.id}`)).json.article;
+  };
+  const pubArt = await mk("Article commentable", jr, true, { en: true });
+  const draft = await mk("Brouillon sans commentaires", jr, false);
+
+  const post = (body, n, extraHeaders = {}) => call("POST", "/api/comments", { body: { article: pubArt.slug, name: "Marie Lecteur", email: "marie@example.org", body: "Merci pour cet article très clair.", hp: "", ts: formTs(), ...body }, headers: { ...ip(n), ...extraHeaders } });
+  const list = async (slug = pubArt.slug) => (await call("GET", `/api/comments?article=${slug}`, { origin: null })).json;
+
+  // lecture publique vide ; article inconnu ou brouillon : introuvable
+  let r = await list();
+  assert.deepEqual([r.ok, r.enabled, r.items.length], [true, true, 0]);
+  assert.equal((await call("GET", `/api/comments?article=${draft.slug}`, { origin: null })).status, 404, "brouillon : pas de commentaires");
+  assert.equal((await call("GET", "/api/comments?article=Mauvais Slug", { origin: null })).status, 400);
+
+  // protections du dépôt
+  assert.equal((await call("POST", "/api/comments", { body: { article: pubArt.slug, name: "Marie", body: "Bonjour à tous", hp: "", ts: formTs() }, origin: null, headers: ip(160) })).status, 403, "Origin absente");
+  assert.equal((await post({ hp: "http://spam" }, 160)).status, 400, "champ piège");
+  assert.equal((await post({ ts: Date.now() }, 161)).status, 400, "trop rapide");
+  assert.equal((await post({ name: "M" }, 162)).status, 400, "nom trop court");
+  assert.equal((await post({ body: "ok" }, 163)).status, 400, "commentaire trop court");
+  assert.equal((await post({ email: "pas-un-email" }, 164)).status, 400);
+  assert.equal((await post({ body: "Voir http://a.example http://b.example et http://c.example" }, 165)).status, 400, "trop de liens");
+  assert.equal((await post({ article: "article-inconnu" }, 166)).status, 404);
+  assert.equal((await post({ article: draft.slug }, 167)).status, 404, "brouillon : refusé");
+
+  // dépôt valide : en attente, jamais public, e-mail et IP protégés
+  r = await post({ name: "Marie\u0000 Lecteur" }, 170);
+  assert.equal(r.status, 201, r.text);
+  assert.equal(r.json.pending, true);
+  assert.ok(/relecture|modération/i.test(r.json.message), "le message dit honnêtement qu'il y a relecture");
+  const row = (await db().query("SELECT id, name, email, status::text s, ip_hash FROM comments"))[0];
+  assert.equal(row.s, "en_attente");
+  assert.equal(row.name, "Marie Lecteur", "caractères de contrôle retirés");
+  assert.ok(row.ip_hash && !row.ip_hash.includes("10.0.0"), "IP jamais stockée en clair");
+  assert.equal((await list()).items.length, 0, "non publié tant que non approuvé");
+  assert.equal((await post({}, 170)).status, 409, "doublon refusé (même adresse, même texte)");
+  assert.equal((await post({ parentId: row.id, body: "Réponse à un commentaire non approuvé." }, 172)).status, 400, "on ne répond pas à un commentaire non approuvé");
+
+  // limitation de débit (2 / minute par adresse)
+  assert.equal((await post({ body: "Deuxième commentaire différent." }, 173)).status, 201);
+  assert.equal((await post({ body: "Troisième commentaire différent." }, 173)).status, 201);
+  assert.equal((await post({ body: "Quatrième commentaire différent." }, 173)).status, 429, "rate limiting (2 par minute)");
+
+  // modération : droits
+  assert.equal((await call("GET", "/api/admin/comments")).status, 401);
+  assert.equal((await as(jr, "GET", "/api/admin/comments")).status, 403, "journaliste : pas de modération");
+  r = await as(ed, "GET", "/api/admin/comments?status=en_attente");
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.items.length, 3);
+  assert.equal(r.json.counts.en_attente, 3);
+  assert.equal(r.json.items[0].articleTitle, "Article commentable");
+
+  // approbation + notification à l'auteur de l'article, pas au modérateur
+  process.env.FCM_TEST_SINK = "1"; global.__pushSent = [];
+  assert.equal((await as(jr, "POST", "/api/admin/devices", { token: "token-auteur-commentaire-0123456789abcdef" })).status, 200);
+  assert.equal((await as(ed, "POST", "/api/admin/devices", { token: "token-moderateur-commentaire-0123456789abc" })).status, 200);
+  assert.equal((await as(ed, "PATCH", `/api/admin/comments/${row.id}`, { status: "approuve" })).status, 200);
+  assert.ok(global.__pushSent.some((x) => x.token.startsWith("token-auteur") && x.data.title === "Nouveau commentaire sur votre article" && x.data.channel === "comments"), "auteur prévenu");
+  assert.ok(!global.__pushSent.some((x) => x.token.startsWith("token-moderateur")), "le modérateur n'est pas prévenu de sa propre action");
+  r = await list();
+  assert.equal(r.items.length, 1);
+  assert.deepEqual(Object.keys(r.items[0]).sort(), ["body", "createdAt", "id", "name", "replies", "staff"], "aucune donnée privée (e-mail, IP) dans la réponse publique");
+
+  // nouveau dépôt → modérateurs prévenus (canal comments)
+  global.__pushSent = [];
+  assert.equal((await post({ body: "Réponse du lecteur au premier commentaire.", parentId: row.id }, 174)).status, 201);
+  assert.ok(global.__pushSent.some((x) => x.token.startsWith("token-moderateur") && x.data.title === "Commentaire à modérer" && x.data.channel === "comments"), "modérateur prévenu d'un dépôt");
+  assert.ok(!global.__pushSent.some((x) => x.token.startsWith("token-auteur")), "le journaliste n'a pas la permission de modération");
+  delete process.env.FCM_TEST_SINK;
+
+  // réponses : approuver la réponse, réponse publique de la rédaction, imbrication
+  const pending = (await as(ed, "GET", "/api/admin/comments?status=en_attente")).json.items;
+  const replyRow = pending.find((c) => c.parentId === row.id);
+  assert.ok(replyRow && replyRow.parentName === "Marie Lecteur");
+  assert.equal((await as(ed, "PATCH", `/api/admin/comments/${replyRow.id}`, { status: "approuve" })).status, 200);
+  assert.equal((await as(ed, "POST", `/api/admin/comments/${row.id}/reply`, { body: "Merci de votre lecture !" })).status, 201);
+  r = await list();
+  assert.equal(r.items.length, 1);
+  assert.equal(r.items[0].replies.length, 2);
+  assert.ok(r.items[0].replies.some((x) => x.staff && x.name === "Édith Modératrice"));
+  assert.equal((await as(ed, "POST", `/api/admin/comments/${replyRow.id}/reply`, { body: "Réponse imbriquée trop profonde." })).status, 400, "un seul niveau de réponses");
+
+  // refus / indésirable / suppression
+  const others = (await as(ed, "GET", "/api/admin/comments?status=en_attente")).json.items;
+  assert.equal(others.length, 2);
+  assert.equal((await as(ed, "PATCH", `/api/admin/comments/${others[0].id}`, { status: "refuse" })).status, 200);
+  assert.equal((await as(ed, "PATCH", `/api/admin/comments/${others[1].id}`, { status: "spam" })).status, 200);
+  assert.equal((await as(ed, "PATCH", `/api/admin/comments/${others[1].id}`, { status: "inconnu" })).status, 400);
+  assert.equal((await list()).items.length, 1, "refusés et indésirables restent cachés");
+  assert.equal((await as(ed, "DELETE", `/api/admin/comments/${others[1].id}`)).status, 200);
+  assert.equal((await as(ed, "DELETE", `/api/admin/comments/${others[1].id}`)).status, 404);
+  assert.ok((await db().query("SELECT 1 FROM audit_log WHERE action = 'commentaire.approuve'")).length >= 2, "modération journalisée");
+
+  // rappel unique pour les commentaires en attente depuis plus de 30 min
+  process.env.FCM_TEST_SINK = "1";
+  assert.equal((await post({ body: "Un dernier commentaire en attente." }, 175)).status, 201);
+  const { remindPending } = require("../server/comments");
+  assert.equal(await remindPending(), 0, "trop tôt");
+  await db().query("UPDATE comments SET created_at = now() - interval '1 hour' WHERE status = 'en_attente'");
+  assert.equal(await remindPending(), 1);
+  assert.equal(await remindPending(), 0, "un seul rappel");
+  delete process.env.FCM_TEST_SINK;
+
+  // fermeture globale des commentaires (Réglages)
+  const cur = (await as(admin, "GET", "/api/admin/settings")).json.settings;
+  assert.equal(cur.commentsEnabled, true);
+  assert.equal((await as(admin, "PUT", "/api/admin/settings", { ...cur, commentsEnabled: false })).status, 200);
+  assert.equal((await list()).enabled, false);
+  assert.equal((await post({ body: "Commentaire pendant la fermeture." }, 176)).status, 503, "dépôt refusé quand fermé");
+  assert.equal((await as(admin, "PUT", "/api/admin/settings", { ...cur, commentsEnabled: true })).status, 200);
+  assert.equal((await list()).enabled, true);
+
+  // page d'article : section commentaires en français et en anglais, build strict (aucune phrase non traduite)
+  const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-cm-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out, I18N_STRICT: "1" }, stdio: "pipe" });
+  const frPage = fs.readFileSync(path.join(out, "article", `${pubArt.slug}.html`), "utf8");
+  assert.ok(frPage.includes('id="comments"') && frPage.includes(`data-article="${pubArt.slug}"`) && frPage.includes(">Commentaires<") && frPage.includes("/assets/comments.js") && frPage.includes("/assets/comments.css"));
+  const enPage = fs.readFileSync(path.join(out, "en", "article", `${pubArt.slug}.html`), "utf8");
+  assert.ok(enPage.includes(">Comments<") && enPage.includes("Send my comment") && !enPage.includes("Envoyer mon commentaire"), "version anglaise traduite");
 });

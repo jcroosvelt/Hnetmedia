@@ -279,6 +279,7 @@ ${extraHead}
 ${inner}
 <script src="/assets/main.js" defer></script>
 <script src="/assets/contact.js" defer></script>
+<script src="/assets/comments.js" defer></script>
 <script src="/assets/newsletter.js" defer></script>
 </body>
 </html>`;
@@ -574,6 +575,21 @@ function buildArticlePages() {
       : `<div class="author-photo ph-placeholder">${authorInitial}</div>`;
     const authorLink = a.authorId ? `/auteur/${a.authorId}.html` : null;
 
+    const commentsHtml = `<section class="comments" id="comments" data-article="${escAttr(a.slug)}" aria-labelledby="commentsTitle">
+        <h2 id="commentsTitle">${T("Commentaires")}</h2>
+        <p class="cm-note">${T("Les commentaires sont relus par la rédaction avant d'être publiés. Votre adresse e-mail n'est jamais affichée.")}</p>
+        <div class="cm-list" id="commentsList" aria-live="polite"><p class="cm-loading">${T("Chargement des commentaires…")}</p></div>
+        <form class="contact-form comment-form" id="commentForm" novalidate>
+          <div class="cm-replying" id="commentReplying" hidden></div>
+          <input type="text" name="name" placeholder="${T("Votre nom")}" aria-label="${T("Votre nom")}" autocomplete="name" maxlength="60" required>
+          <input type="email" name="email" placeholder="${T("Votre adresse e-mail (facultative)")}" aria-label="${T("Votre adresse e-mail (facultative)")}" autocomplete="email" maxlength="254">
+          <textarea name="body" placeholder="${T("Votre commentaire")}" aria-label="${T("Votre commentaire")}" maxlength="2000" required></textarea>
+          <div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>${T("Ne pas remplir")}<input type="text" name="hp" tabindex="-1" autocomplete="off"></label></div>
+          <button type="submit">${T("Envoyer mon commentaire")}</button>
+        </form>
+        <div id="commentMsg" class="dev-notice" role="status" aria-live="polite" hidden></div>
+      </section>`;
+
     const body = `
     <main><div class="wrap" style="max-width:760px">
       <div class="breadcrumb"><a href="/">${T("Accueil")}</a> / <a href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a> / ${escAttr(a.title)}</div>
@@ -612,6 +628,7 @@ function buildArticlePages() {
 
         ${navHtml}
       </article>
+      ${commentsHtml}
       ${relatedHtml}
     </div></main>`;
 
@@ -634,7 +651,7 @@ function buildArticlePages() {
     };
 
     writeFile(`article/${a.slug}.html`, wrapPage({
-      extraHead: '<link rel="stylesheet" href="/assets/article-body.css">',
+      extraHead: '<link rel="stylesheet" href="/assets/article-body.css">\n<link rel="stylesheet" href="/assets/comments.css">',
       title: `${seoTitle} — ${settings.siteName}`,
       description: seoDesc,
       canonicalPath: `/article/${a.slug}`,

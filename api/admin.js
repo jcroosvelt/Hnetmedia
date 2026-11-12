@@ -31,6 +31,7 @@
  * Pages fixes (settings.manage) : GET|PUT|DELETE pages[/:slug] — texte d'origine rétabli par DELETE
  * Équipe / partenaires / offres / réglages (permissions author.manage, partner.manage, job.manage, settings.manage)
  *   GET|POST team, partners, jobs   PUT|DELETE team/:id, partners/:id, jobs/:id   GET|PUT settings
+ * Commentaires : GET comments?status=&article=   PATCH comments/:id { status }   POST comments/:id/reply { body }   DELETE comments/:id  (comment.moderate)
  * Notifications push (appli Android) : POST|DELETE devices { token } — jeton FCM de l'appareil connecté
  * Comptes
  *   GET users   POST users   PATCH users/:id
@@ -47,6 +48,7 @@ const pages = require("../server/pages");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
 const push = require("../server/push");
+const comments = require("../server/comments");
 
 const MAX_DEVICES_PER_USER = 10;
 
@@ -404,6 +406,17 @@ async function usersRoute(req, res, parts) {
   throw new HttpError(404, "Route inconnue.");
 }
 
+/* ── Commentaires des lecteurs (modération) ── */
+async function commentsRoute(req, res, parts) {
+  const s = await auth.requireAuth(req, "comment.moderate");
+  const id = parts[1];
+  if (!id && req.method === "GET") return send(res, 200, { ok: true, ...(await comments.listAdmin(getQuery(req))) });
+  if (id && !parts[2] && req.method === "PATCH") return send(res, 200, await comments.setStatus(s, id, await readBody(req)));
+  if (id && parts[2] === "reply" && req.method === "POST") return send(res, 201, await comments.replyAsStaff(s, id, await readBody(req)));
+  if (id && !parts[2] && req.method === "DELETE") return send(res, 200, await comments.remove(s, id));
+  throw new HttpError(404, "Route inconnue.");
+}
+
 /* ── Appareils pour les notifications push (application Android) ── */
 async function devicesRoute(req, res) {
   const s = await auth.requireAuth(req);
@@ -430,6 +443,7 @@ async function devicesRoute(req, res) {
 
 const ROUTES = {
   devices: devicesRoute,
+  comments: commentsRoute,
   articles: articlesRoute,
   "contact-messages": contactRoute,
   subscribers: subscribersRoute,

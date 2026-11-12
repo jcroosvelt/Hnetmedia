@@ -204,7 +204,7 @@ const categories = {
 /* ═════════ RÉGLAGES DU SITE ═════════ */
 const settings = {
   async get() {
-    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','taglineEn','descriptionEn','footerText','footerTextEn','social','legal','contactCategories')");
+    const rows = await getDb().query("SELECT key, value FROM site_settings WHERE key IN ('siteName','tagline','description','taglineEn','descriptionEn','footerText','footerTextEn','social','legal','contactCategories','commentsEnabled')");
     const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     return {
       siteName: m.siteName || "", tagline: m.tagline || "", description: m.description || "", footerText: typeof m.footerText === "string" ? m.footerText : "",
@@ -212,6 +212,7 @@ const settings = {
       social: Object.assign(Object.fromEntries(SOCIAL_KEYS.map((k) => [k, ""])), m.social || {}),
       legal: Object.assign(Object.fromEntries(LEGAL_KEYS.map((k) => [k, ""])), m.legal || {}),
       contactCategories: Array.isArray(m.contactCategories) ? m.contactCategories : [],
+      commentsEnabled: m.commentsEnabled !== false,
     };
   },
   async save(s, b) {
@@ -237,7 +238,7 @@ const settings = {
     // Texte du pied de page facultatif : vide = texte d'origine du site (la ligne est supprimée).
     const optional = (k, val) => (val ? up(k, val) : { text: "DELETE FROM site_settings WHERE key = $1", params: [k] });
     await getDb().transaction([up("siteName", siteName), up("tagline", tagline), up("description", description), optional("footerText", footerText),
-      optional("taglineEn", en.taglineEn), optional("descriptionEn", en.descriptionEn), optional("footerTextEn", en.footerTextEn), up("social", social), up("legal", legal), up("contactCategories", cats)]);
+      optional("taglineEn", en.taglineEn), optional("descriptionEn", en.descriptionEn), optional("footerTextEn", en.footerTextEn), up("social", social), up("legal", legal), up("contactCategories", cats), up("commentsEnabled", !(b.commentsEnabled === false || b.commentsEnabled === "false"))]);
     await audit(s.user.id, "reglages.modification", "settings", null, { reseaux: Object.keys(social).length, mentions: Object.keys(legal).length });
     await changed("réglages du site");
     return this.get();

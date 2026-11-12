@@ -112,12 +112,11 @@ async function notify({ permission = null, userIds = null, excludeUserId = null,
 }
 
 /**
- * Nouveau commentaire à modérer. Le site n'a PAS encore de système de commentaires : cette fonction est
- * prête à être appelée par lui (permission : contact.manage, en attendant une permission dédiée).
+ * Nouveau commentaire à modérer (appelée par server/comments.js à chaque dépôt) : modérateurs (comment.moderate).
  */
 function notifyNewComment({ articleTitle, author, slug }) {
   return notify({
-    permission: "contact.manage", channel: "comments", title: "Commentaire à modérer",
+    permission: "comment.moderate", channel: "comments", title: "Commentaire à modérer",
     body: `${author || "Un lecteur"} sur « ${articleTitle || slug || "un article"} »`, url: "/admin#/commentaires",
   });
 }

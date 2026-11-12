@@ -8,6 +8,15 @@
  * relue et validée par un humain dans /admin.
  */
 module.exports = {
+  // ── Commentaires des lecteurs ──
+  "Commentaires": "Comments",
+  "Les commentaires sont relus par la rédaction avant d'être publiés. Votre adresse e-mail n'est jamais affichée.": "Comments are reviewed by the newsroom before they are published. Your email address is never displayed.",
+  "Chargement des commentaires…": "Loading comments…",
+  "Votre nom": "Your name",
+  "Votre adresse e-mail (facultative)": "Your email address (optional)",
+  "Votre commentaire": "Your comment",
+  "Ne pas remplir": "Do not fill in",
+  "Envoyer mon commentaire": "Send my comment",
   // ── Interface commune ──
   "Accueil": "Home",
   "Langue": "Language",

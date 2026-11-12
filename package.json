@@ -10,7 +10,7 @@
     "db:status": "node db/migrate.js --status",
     "test": "node --test test/*.test.js",
     "build:editor": "esbuild admin-app/editor.src.js --bundle --minify --format=iife --target=es2020 --legal-comments=none --outfile=admin-app/editor.js",
-    "test:browser": "node test/browser/e2e.js && node test/browser/roles.js && node test/browser/catalog.js && node build.js && node test/browser/search.js && node test/browser/contact.js && node test/browser/pagination.js"
+    "test:browser": "node test/browser/e2e.js && node test/browser/roles.js && node test/browser/share.js && node test/browser/catalog.js && node build.js && node test/browser/search.js && node test/browser/contact.js && node test/browser/pagination.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

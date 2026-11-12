@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : interligne 1,20 sur tout le site, l'admin et l'éditeur.
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : l'admin sait créer un brouillon à partir d'un contenu partagé depuis une autre application (partie site ; l'application Android suit).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -23,6 +23,7 @@
 | Favicon et icônes | ✅ | Symbole réel du logo |
 | Article à approuver | ✅ Code en ligne (notification active avec la clé Firebase) | Un rédacteur sans droit de publier clique « Soumettre » → les approbateurs reçoivent « Article à approuver » ; badge « À approuver » dans la liste ; rappel unique après 2 h ; testé avec un faux Firebase |
 | **Commentaires des lecteurs** | ✅ En ligne | Sous chaque article (FR et EN) : nom + e-mail facultatif (jamais affiché) + texte ; **tout commentaire attend la validation** de la rédaction ; réponses sur un niveau ; modération dans `/admin › Commentaires` (approuver, refuser, indésirable, supprimer, répondre en public) pour administrateur, rédacteur en chef et éditeur ; anti-spam (champ piège, délai, 2 par minute / 5 par heure, 2 liens maximum, doublons) ; interrupteur « Commentaires ouverts » dans Réglages ; notifications push (nouveau dépôt, rappel après 30 min, auteur prévenu à la publication). Testé en API et dans un navigateur (affichage, réponse, envoi) avec une API simulée |
+| Brouillon depuis un partage (appli Android) | ⚠️ Partie admin en ligne ; l'application Android n'envoie pas encore le contenu (nouvelle APK à venir) | `window.onAppShare({text, subject, files})` : un texte, un lien ou une **photo** (JPEG/PNG/WebP) deviennent un **brouillon** après confirmation (titre modifiable, description de la photo obligatoire, lien ajouté aux sources) ; jamais publié ; les vidéos ne sont pas prises en charge ; réservé aux rôles qui peuvent créer un article ; testé dans un navigateur avec un partage simulé |
 | Notifications par rôle | ✅ Code en ligne (actives avec la clé Firebase) | **Administrateur** : compte verrouillé, nouveau compte. **Rédacteur en chef** : article à approuver, programmé bloqué, messages, abonnés. **Éditeur** : traduction anglaise à valider, article publié. **Journaliste / contributeur** : leur article publié, programmé, archivé, renvoyé pour modifications, corrigé. **Commercial** : demandes publicité / partenariat, article sponsorisé publié. Jamais de notification à l'auteur de l'action ; testé avec un faux Firebase |
 | Notifications push (appli Android) | ⚠️ Variables Firebase ajoutées dans Vercel le 12 nov. (`/api/health` → `push: true` si la clé est lisible) ; pas encore testé de bout en bout sur un téléphone | Nouveau message de contact, nouvel abonné confirmé, article publié / programmé ; rappels des messages non traités (30 min puis toutes les 2 h, 3 maximum) via le cron existant ; testé avec un faux Firebase, pas encore sur un vrai téléphone |
 
@@ -74,6 +75,7 @@
 
 | Date | Modification |
 |---|---|
+| 12 nov. | Admin : réception d'un contenu partagé (`window.onAppShare`) → brouillon (texte, lien, photo) ; nouveau test navigateur `test/browser/share.js` (13 vérifications) |
 | 12 nov. | **Interligne 1,20** sur tout le site (public, admin, éditeur, articles publiés) à la demande du propriétaire : toute valeur supérieure à 1,20 dans `style.css`, `article-body.css`, `article.css`, `comments.css`, `admin.css` et `admin.js` est ramenée à 1,20 ; les titres et pastilles déjà plus serrés (1 à 1,18) sont conservés |
 | 12 nov. | **Page article refaite** (demande du propriétaire, modèle fourni : mise en page seulement, couleurs et polices inchangées) : photo pleine largeur avec retour, feuille blanche aux coins arrondis qui la chevauche, pastille de rubrique, titre Playfair, ligne d'auteur (photo, nom, date, temps de lecture), barre d'actions flottante (commentaires avec compteur réel, WhatsApp, Facebook, X, copier le lien). Aucune donnée inventée (pas de « J'aime », ni de compteur de lectures, ni de « Suivre »). Nouvelle feuille `assets/article.css` ; `style.css` intact |
 | 12 nov. | Éditeur : interligne simple (1). Notifications « article publié / sponsorisé » : le lien ouvre l'article **dans l'admin** (la page publique n'existe qu'après la reconstruction du site, d'où un 404 si on touchait la notification trop tôt) |

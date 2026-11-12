@@ -351,6 +351,7 @@
     window.removeEventListener("hashchange", route);
     window.addEventListener("hashchange", route);
     if (!location.hash || location.hash === "#" || location.hash === "#/") location.hash = tabsFor()[0][0]; else route();
+    setTimeout(handleShared, 500); // contenu partagé reçu avant la connexion
   }
 
   function logout() {
@@ -487,6 +488,60 @@
     var n = size || 18;
     return '<svg viewBox="0 0 24 24" width="' + n + '" height="' + n + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (PAGE_ICONS[name] || "") + "</svg>";
   }
+
+  /* ───────── Contenu reçu d'une autre application (partage Android → « HNet Media ») ─────────
+     L'application appelle window.onAppShare({ text, subject, files:[{ name, mime, data(base64) }] }).
+     Un texte, un lien ou une photo deviennent un BROUILLON (jamais publié) après confirmation. Les vidéos ne sont
+     pas prises en charge (le site n'accepte que des images). */
+  var shared = null;
+  function ackShare() { try { if (window.AppBridge) window.AppBridge.postMessage("shareack:"); } catch (e) { /* hors appli */ } }
+  window.onAppShare = function (d) {
+    if (d && (d.text || (d.files && d.files.length))) { shared = d; handleShared(); }
+  };
+  function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function b64ToFile(f) {
+    var bin = atob(f.data), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new File([u], f.name || "photo", { type: f.mime });
+  }
+  function handleShared() {
+    // Attend qu'une session soit ouverte et que l'écran soit prêt (connexion possible après la réception).
+    if (!shared || !S.user || !S.csrf || !document.getElementById("view")) return;
+    var d = shared; shared = null; ackShare();
+    if (!can("article.create")) { toast("Votre rôle ne permet pas de créer un article.", true); return; }
+    var text = String(d.text || "").trim();
+    var url = (text.match(/https?:\/\/[^\s<>"]+/) || [])[0] || null;
+    var body = url ? text.replace(url, "").trim() : text;
+    var files = d.files || [];
+    var img = files.filter(function (f) { return /^image\/(jpeg|png|webp)$/.test(f.mime); })[0];
+    var skipped = files.length - (img ? 1 : 0);
+    var firstLine = String(d.subject || body.split("\n")[0] || (url ? "Lien partagé" : "Photo partagée")).trim().slice(0, 200);
+    var fields = [{ name: "title", label: "Titre du brouillon", value: firstLine, required: true, max: 300 }];
+    if (img) fields.push({ name: "alt", label: "Description de la photo (obligatoire)", required: true, max: 200, hint: "Elle sert aux personnes qui ne voient pas l'image." });
+    var what = [img ? "1 photo" : null, url ? "1 lien" : null, body ? "du texte" : null].filter(Boolean).join(", ");
+    ask("Créer un brouillon ?", fields, {
+      submit: "Créer le brouillon",
+      intro: "Contenu reçu : " + what + ". Un brouillon sera créé (il ne sera pas publié)." + (skipped ? " " + skipped + " fichier(s) ignoré(s) : seules les photos JPEG, PNG ou WebP sont acceptées." : "")
+    }).then(function (v) {
+      if (!v) return;
+      var upload = img ? prepareImage(b64ToFile(img)).then(function (r) { return uploadImage(r.blob); }) : Promise.resolve(null);
+      return upload.then(function (media) {
+        return api("POST", "articles", { title: v.title }).then(function (r) {
+          var id = r.article.id;
+          var paras = body ? body.split(/\n{1,}/).map(function (p) { return "<p>" + escHtml(p.trim()) + "</p>"; }).join("") : "";
+          if (url) paras += '<p><a href="' + escHtml(url) + '" rel="nofollow noopener">' + escHtml(url) + "</a></p>";
+          var patch = { translations: { fr: { title: v.title, content: paras } } };
+          if (url && /^https:\/\//.test(url)) patch.sources = [{ name: "Lien partagé", url: url }];
+          if (media) patch.mainImage = { url: media.url, alt: v.alt };
+          return api("PUT", "articles/" + encodeURIComponent(id), patch).then(function () {
+            toast("Brouillon créé à partir du contenu partagé.");
+            location.hash = "#/articles/" + encodeURIComponent(id);
+          });
+        });
+      }).catch(function (x) { toast((x && x.message) || "Impossible de créer le brouillon.", true); });
+    });
+  }
+  if (window.__appShare) window.onAppShare(window.__appShare);
 
   /* ───────── Images : réduction sur l'appareil, envoi, sélecteur ───────── */
   var MAX_ORIGINAL = 30 * 1024 * 1024;

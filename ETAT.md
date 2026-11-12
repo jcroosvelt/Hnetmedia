@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : variables Firebase ajoutées dans Vercel par le propriétaire ; `/api/health` indique `push: true/false`.
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : admin plus robuste dans les WebView Android anciens (compléments JavaScript) et erreurs de page affichées.
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -74,6 +74,7 @@
 
 | Date | Modification |
 |---|---|
+| 12 nov. | Admin : compléments pour WebView ancien (`Array.at/findLast`, `Object.hasOwn`, `replaceAll`…) avant l'éditeur ; toute erreur inattendue de la page s'affiche en bandeau (diagnostic des brouillons qui ne s'ouvraient pas dans l'appli Android) |
 | 12 nov. | `/api/health` expose `push` (oui/non : clé Firebase présente et lisible) pour vérifier la configuration sans rien dévoiler |
 | 12 nov. | **Commentaires des lecteurs** : migration 0010 (table `comments`, permission `comment.moderate`), `/api/comments`, section sous les articles (`assets/comments.js` + `comments.css`), onglet `/admin › Commentaires`, interrupteur dans Réglages, rappels push |
 | 12 nov. | Notifications pour tous les rôles : `push.notify` cible aussi des comptes précis ; « Renvoyer pour modifications » (`POST articles/:id/review-return`) ; alertes sécurité et comptes ; commercial ; programmés bloqués (une seule alerte) |

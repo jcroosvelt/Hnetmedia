@@ -1,6 +1,19 @@
 /* Espace rédaction HNet Media — interface d'administration (JavaScript sans dépendance).
    Toute donnée affichée passe par textContent (jamais innerHTML), sauf l'aperçu d'article,
    qui n'affiche que du HTML déjà filtré par le schéma de l'éditeur. */
+/* Compléments pour les navigateurs intégrés anciens (WebView Android non mis à jour) : l'éditeur de texte
+   utilise ces méthodes récentes. Sans effet sur les navigateurs à jour. */
+(function () {
+  function def(o, name, fn) { if (!o[name]) Object.defineProperty(o, name, { value: fn, configurable: true, writable: true }); }
+  def(Array.prototype, "at", function (i) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return this[i]; });
+  def(Array.prototype, "findLast", function (f, th) { for (var i = this.length - 1; i >= 0; i--) if (f.call(th, this[i], i, this)) return this[i]; return undefined; });
+  def(Array.prototype, "findLastIndex", function (f, th) { for (var i = this.length - 1; i >= 0; i--) if (f.call(th, this[i], i, this)) return i; return -1; });
+  def(String.prototype, "at", function (i) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i >= 0 && i < this.length ? this.charAt(i) : undefined; });
+  def(String.prototype, "replaceAll", function (s, r) { return s instanceof RegExp ? this.replace(s, r) : this.split(String(s)).join(typeof r === "function" ? r(s) : r); });
+  def(Object, "hasOwn", function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); });
+  def(window, "structuredClone", function (v) { return JSON.parse(JSON.stringify(v)); });
+})();
+
 (function () {
   "use strict";
 
@@ -52,6 +65,11 @@
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, isErr ? 6000 : 3500);
   }
+  // Une erreur inattendue de la page est affichée (au lieu de ne rien faire) : plus simple à signaler et à corriger.
+  var shownErrors = 0;
+  window.addEventListener("error", function (e) {
+    if (shownErrors++ < 3 && e && e.message) toast("Erreur de la page : " + String(e.message).slice(0, 140), true);
+  });
 
   /* ───────── Dialogues ───────── */
   function openDialog(build, wide) {

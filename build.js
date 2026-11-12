@@ -590,47 +590,61 @@ function buildArticlePages() {
         <div id="commentMsg" class="dev-notice" role="status" aria-live="polite" hidden></div>
       </section>`;
 
-    const body = `
-    <main><div class="wrap" style="max-width:760px">
-      <div class="breadcrumb"><a href="/">${T("Accueil")}</a> / <a href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a> / ${escAttr(a.title)}</div>
-      <article>
-        ${articleBadges(a)}
-        <span class="${cat.tagClass || "tag"}" style="margin-top:10px;display:inline-block">${escAttr(catLabel(cat))}</span>
-        ${a.kicker ? `<div class="update-note" style="font-size:13px;color:var(--orange);font-weight:700;margin-top:14px">${escAttr(a.kicker)}</div>` : ""}
-        <h1 style="font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:var(--navy);margin:10px 0 14px;line-height:1.2">${escAttr(a.title)}</h1>
-        <p style="font-size:16px;color:var(--gray-dk);line-height:1.7;margin-bottom:18px">${escAttr(a.excerpt)}</p>
+    const ICON = {
+      back: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+      comment: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+      whatsapp: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21l1.6-4.7A9 9 0 1 1 8 19.6L3 21z"/><path d="M9 9.5c.3 2.2 2.3 4.2 4.5 4.5l1.2-1.2-1.8-.9-.8.6a4 4 0 0 1-1.6-1.6l.6-.8-.9-1.8L9 9.5z"/></svg>',
+      facebook: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8.5A.5.5 0 0 1 14 8z"/></svg>',
+      x: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l16 16M20 4L4 20"/></svg>',
+      link: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+    };
+    const photoCaption = a.mainImage && (a.mainImage.caption || a.mainImage.credit)
+      ? `<p class="art-caption">${escAttr(a.mainImage.caption || "")}${a.mainImage.credit ? " — © " + escAttr(a.mainImage.credit) : ""}</p>` : "";
+    const badges = articleBadges(a);
 
-        <div class="author-card">
+    const body = `
+    <main class="art">
+      <div class="breadcrumb art-crumbs"><a href="/">${T("Accueil")}</a> / <a href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a> / ${escAttr(a.title)}</div>
+      <div class="art-hero-wrap">
+        <div class="art-hero" role="img" aria-label="${escAttr(a.mainImage && a.mainImage.alt ? a.mainImage.alt : a.title)}" style="background:${heroBg}"></div>
+        <a class="art-back" href="/${cat.slug || a.category}.html" aria-label="${T("Retour à la rubrique")} ${escAttr(catLabel(cat))}">${ICON.back}</a>
+      </div>
+      <article class="art-sheet">
+        <div class="art-chips"><a class="art-chip" href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a>${badges}</div>
+        ${a.kicker ? `<div class="art-kicker">${escAttr(a.kicker)}</div>` : ""}
+        <h1 class="art-title">${escAttr(a.title)}</h1>
+        ${a.excerpt ? `<p class="art-excerpt">${escAttr(a.excerpt)}</p>` : ""}
+
+        <div class="art-byline">
           ${authorPhoto}
-          <div>
-            ${authorLink ? `<a href="${authorLink}" class="author-name" style="text-decoration:none">${escAttr(authorName)}</a>` : `<div class="author-name">${escAttr(authorName)}</div>`}
-            <div class="author-role">${formatDateFR(a.publishedAt)} · ${T("{n} min de lecture", { n: a.readingTime })}</div>
-            ${updatedHtml}
+          <div class="art-by">
+            ${authorLink ? `<a href="${authorLink}" class="art-author">${escAttr(authorName)}</a>` : `<span class="art-author">${escAttr(authorName)}</span>`}
+            <div class="art-meta"><span>${formatDateFR(a.publishedAt)}</span><span aria-hidden="true">·</span><span>${T("{n} min de lecture", { n: a.readingTime })}</span></div>
           </div>
         </div>
-
-        <div class="modal-hero" role="img" aria-label="${escAttr(a.mainImage && a.mainImage.alt ? a.mainImage.alt : a.title)}" style="height:340px;border-radius:var(--r-md);overflow:hidden;background:${heroBg};margin:24px 0">
-        </div>
-        ${a.mainImage && (a.mainImage.caption || a.mainImage.credit) ? `<div class="update-note" style="margin-bottom:20px">${escAttr(a.mainImage.caption || "")}${a.mainImage.credit ? " — © " + escAttr(a.mainImage.credit) : ""}</div>` : ""}
-
+        ${updatedHtml}
+        ${photoCaption}
         ${correctionHtml}
 
-        <div class="modal-body article-body" style="font-size:15px;line-height:1.85;color:#2D3748">${a.content}</div>
+        <div class="article-body">${a.content}</div>
 
         ${sourcesHtml}
 
-        <div style="display:flex;gap:10px;margin:28px 0;flex-wrap:wrap">
-          <button onclick="shareArticle('twitter')" class="page-btn">${T("Partager sur X")}</button>
-          <button onclick="shareArticle('facebook')" class="page-btn">Facebook</button>
-          <button onclick="shareArticle('whatsapp')" class="page-btn">WhatsApp</button>
-          <button onclick="shareArticle('copy')" id="copyLinkBtn" class="page-btn">${T("Copier le lien")}</button>
+        <div class="art-actions" role="group" aria-label="${T("Partager l'article")}">
+          <a class="art-act" href="#comments"><span class="art-ic">${ICON.comment}<b class="art-count" data-cm-count hidden></b></span><span class="art-act-l">${T("Commentaires")}</span></a>
+          <button type="button" class="art-act" onclick="shareArticle('whatsapp')" aria-label="WhatsApp">${ICON.whatsapp}<span class="art-act-l">WhatsApp</span></button>
+          <button type="button" class="art-act" onclick="shareArticle('facebook')" aria-label="Facebook">${ICON.facebook}<span class="art-act-l">Facebook</span></button>
+          <button type="button" class="art-act" onclick="shareArticle('twitter')" aria-label="${T("Partager sur X")}">${ICON.x}<span class="art-act-l">X</span></button>
+          <button type="button" class="art-act" onclick="shareArticle('copy')" aria-label="${T("Copier le lien")}">${ICON.link}<span class="art-act-l" id="copyLinkBtn">${T("Copier le lien")}</span></button>
         </div>
 
         ${navHtml}
       </article>
-      ${commentsHtml}
-      ${relatedHtml}
-    </div></main>`;
+      <div class="art-more">
+        ${commentsHtml}
+        ${relatedHtml}
+      </div>
+    </main>`;
 
     const seoTitle = (a.seo && a.seo.title) || a.title;
     const seoDesc = (a.seo && a.seo.description) || a.excerpt;
@@ -651,7 +665,7 @@ function buildArticlePages() {
     };
 
     writeFile(`article/${a.slug}.html`, wrapPage({
-      extraHead: '<link rel="stylesheet" href="/assets/article-body.css">\n<link rel="stylesheet" href="/assets/comments.css">',
+      extraHead: '<link rel="stylesheet" href="/assets/article-body.css">\n<link rel="stylesheet" href="/assets/article.css">\n<link rel="stylesheet" href="/assets/comments.css">',
       title: `${seoTitle} — ${settings.siteName}`,
       description: seoDesc,
       canonicalPath: `/article/${a.slug}`,

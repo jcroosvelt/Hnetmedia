@@ -8,6 +8,9 @@
  * relue et validée par un humain dans /admin.
  */
 module.exports = {
+  // ── Page article ──
+  "Retour à la rubrique": "Back to section",
+  "Partager l'article": "Share this article",
   // ── Commentaires des lecteurs ──
   "Commentaires": "Comments",
   "Les commentaires sont relus par la rédaction avant d'être publiés. Votre adresse e-mail n'est jamais affichée.": "Comments are reviewed by the newsroom before they are published. Your email address is never displayed.",

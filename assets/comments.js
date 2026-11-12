@@ -71,7 +71,12 @@
       form.elements.body.focus();
     }
   }
+  function setCount(n) {
+    var els = document.querySelectorAll("[data-cm-count]");
+    for (var i = 0; i < els.length; i++) { els[i].textContent = n ? String(n) : ""; els[i].hidden = !n; }
+  }
   function render(data) {
+    setCount(data.enabled ? data.total : 0);
     list.textContent = "";
     if (!data.enabled) { form.hidden = true; list.appendChild(el("p", "cm-empty", T.closed)); return; }
     if (!data.items.length) { list.appendChild(el("p", "cm-empty", T.empty)); return; }

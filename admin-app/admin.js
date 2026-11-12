@@ -918,6 +918,14 @@
             a.reviewRequestedAt = r.article.reviewRequestedAt; renderPublishMenu(); toast("Article soumis : les approbateurs sont prévenus.");
           }).catch(function (x) { toast(x.message, true); });
         }]);
+        if (rights.publish && a.status === "brouillon" && a.reviewRequestedAt) entries.push(["Renvoyer pour modifications…", function () {
+          ask("Renvoyer l'article à son auteur", [{ name: "note", label: "Message à l'auteur (facultatif)", type: "text", required: false }], { submit: "Renvoyer" }).then(function (v) {
+            if (!v) return;
+            api("POST", "articles/" + encodeURIComponent(a.id) + "/review-return", { note: v.note || "" }).then(function (r) {
+              a.reviewRequestedAt = r.article.reviewRequestedAt; renderPublishMenu(); toast("Article renvoyé à son auteur.");
+            }).catch(function (x) { toast(x.message, true); });
+          });
+        }]);
         if (rights.publish && a.status === "publie") entries.push(["Dépublier (brouillon)", function () {
           confirmBox("L'article ne sera plus visible sur le site après la prochaine mise à jour.", { title: "Dépublier ?", confirm: "Dépublier" }).then(function (ok) { if (ok) changeStatus("brouillon", null, "Article repassé en brouillon."); });
         }]);

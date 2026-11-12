@@ -77,6 +77,18 @@ async function remindReviews() {
   return rows.length;
 }
 
+/** Article programmé dont l'heure est passée mais incomplet : prévenu UNE fois (review_reminded_at). */
+async function warnBlocked() {
+  if (!push.isConfigured()) return 0;
+  const rows = await getDb().query(`
+    UPDATE articles SET review_reminded_at = now()
+    WHERE status = 'programme' AND published_at <= now() AND review_reminded_at IS NULL RETURNING id, slug`);
+  for (const r of rows) {
+    await push.notify({ permission: "article.publish", channel: "publication", title: "Article programmé bloqué", body: `« ${r.slug} » est incomplet (rubrique, signature ou texte) et n'a pas pu être publié.`, url: `/admin#/articles/${r.id}` });
+  }
+  return rows.length;
+}
+
 async function run() {
   const r = await promoteDue();
   await housekeeping();
@@ -86,10 +98,10 @@ async function run() {
     const titles = await getDb().query(
       `SELECT a.slug, t.title FROM articles a JOIN article_translations t ON t.article_id = a.id AND t.lang = a.original_lang
        WHERE a.slug = ANY($1::text[])`, [r.promoted]);
-    for (const x of titles) await push.notify({ channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
+    for (const x of titles) await push.notify({ permission: "article.edit_any", channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
   }
-  const reminded = (await remindPending()) + (await remindReviews());
+  const reminded = (await remindPending()) + (await remindReviews()) + (await warnBlocked());
   return { ...r, rebuild, reminded };
 }
 
-module.exports = { run, promoteDue, remindPending, remindReviews };
+module.exports = { run, promoteDue, remindPending, remindReviews, warnBlocked };

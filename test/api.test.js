@@ -1034,3 +1034,88 @@ test("push : article à approuver, rappel unique, commentaires prêts mais non b
   assert.equal(c[0].data.channel, "comments");
   delete process.env.FCM_TEST_SINK;
 });
+
+/* ═════════════════════════ PUSH POUR LES AUTRES RÔLES ═════════════════════════ */
+test("push : retours aux auteurs, traductions, comptes, sécurité, commercial, programmés bloqués", async () => {
+  process.env.FCM_TEST_SINK = "1";
+  global.__pushSent = [];
+  const pw = "un mot de passe solide 2026";
+  const admin = await loginAs("admin@hnetmedia.com", pw, 220);
+  const mk = async (email, name, role) => (await as(admin, "POST", "/api/admin/users", { email, name, role, password: pw })).status;
+  const tok = (k) => `token-${k}-0123456789-abcdefghijklmnop`;
+  const reg = async (s, k) => assert.equal((await as(s, "POST", "/api/admin/devices", { token: tok(k) })).status, 200);
+  const got = (k) => global.__pushSent.filter((x) => x.token === tok(k)).map((x) => x.data);
+  await reg(admin, "admin");
+
+  // comptes : l'admin est prévenu d'un nouveau compte créé par un AUTRE admin seulement
+  assert.equal(await mk("push-chef@hnetmedia.com", "Chef Rédac", "redacteur_en_chef"), 201);
+  assert.equal(got("admin").filter((d) => d.title === "Nouveau compte créé").length, 0, "on ne prévient pas l'auteur de l'action");
+  const chef = await loginAs("push-chef@hnetmedia.com", pw, 221);
+  await reg(chef, "chef");
+  assert.equal(await mk("push-ed@hnetmedia.com", "Édith Éditrice", "editeur"), 201);
+  assert.equal(got("chef").length, 0, "le rédacteur en chef n'a pas la permission user.manage");
+  assert.ok(got("admin").length === 0);
+  const ed = await loginAs("push-ed@hnetmedia.com", pw, 222); await reg(ed, "ed");
+  assert.equal(await mk("push-jr2@hnetmedia.com", "Julie Journaliste", "journaliste"), 201);
+  const jr = await loginAs("push-jr2@hnetmedia.com", pw, 223); await reg(jr, "jr");
+  assert.equal(await mk("push-com@hnetmedia.com", "Carl Commercial", "commercial"), 201);
+  const com = await loginAs("push-com@hnetmedia.com", pw, 224); await reg(com, "com");
+  // création par le chef impossible (pas de droit) ; création d'un compte par l'admin prévient un 2e admin
+  assert.equal(await mk("push-admin2@hnetmedia.com", "Second Admin", "administrateur"), 201);
+  const adm2 = await loginAs("push-admin2@hnetmedia.com", pw, 225); await reg(adm2, "adm2");
+  assert.equal(await mk("push-tmp@hnetmedia.com", "Compte Temporaire", "contributeur"), 201);
+  assert.equal(got("adm2").filter((d) => d.title === "Nouveau compte créé").length, 1, "2e administrateur prévenu");
+
+  // sécurité : verrouillage d'un compte → administrateurs prévenus, une seule fois
+  for (let i = 0; i < 5; i++) await call("POST", "/api/admin/auth/login", { body: { email: "push-tmp@hnetmedia.com", password: "mauvais mot de passe 000" }, headers: ip(230 + i) });
+  const locks = got("admin").filter((d) => d.title === "Compte verrouillé");
+  assert.equal(locks.length, 1, "une seule alerte de verrouillage");
+  assert.ok(!JSON.stringify(locks[0]).includes("mauvais"), "aucun secret dans la notification");
+
+  // retours aux auteurs
+  const art = (await as(jr, "POST", "/api/admin/articles", { title: "Enquête de Julie", category: "culture" })).json.article;
+  assert.equal((await as(jr, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Enquête de Julie", content: "<p>Texte.</p>" }, en: { title: "Julie's investigation", content: "<p>Text.</p>", reviewed: false } }, authorName: "Julie Journaliste" })).status, 200);
+  assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {})).status, 200);
+  assert.ok(got("chef").some((d) => d.title === "Article à approuver"), "rédacteur en chef prévenu");
+  assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review-return`, {})).status, 403, "journaliste ne peut pas renvoyer");
+  let r = await as(chef, "POST", `/api/admin/articles/${art.id}/review-return`, { note: "Ajoutez une source" });
+  assert.equal(r.status, 200, r.text);
+  const back = got("jr").find((d) => d.title === "Article renvoyé pour modifications");
+  assert.ok(back && back.body.includes("Ajoutez une source"), "journaliste prévenu avec le mot du chef");
+  assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/review-return`, {})).status, 400, "plus en attente");
+
+  // publication par le chef : l'auteur + l'éditeur (traduction) sont prévenus, pas le chef
+  assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+  assert.ok(got("jr").some((d) => d.title === "Votre article est publié"), "auteur prévenu de la publication");
+  assert.ok(got("ed").some((d) => d.title === "Traduction anglaise à valider"), "éditeur prévenu de la traduction à valider");
+  assert.ok(!got("chef").some((d) => d.title === "Votre article est publié"), "l'acteur n'est pas prévenu");
+  assert.equal(got("com").length, 0, "commercial ne reçoit rien du contenu éditorial : " + JSON.stringify(got("com")));
+
+  // correction → auteur prévenu
+  assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/corrections`, { text: "Le nom a été corrigé." })).status, 201);
+  assert.ok(got("jr").some((d) => d.title === "Correction publiée sur votre article"));
+
+  // article sponsorisé publié → commercial prévenu
+  const sp = (await as(chef, "POST", "/api/admin/articles", { title: "Contenu sponsorisé", category: "culture" })).json.article;
+  assert.equal((await as(chef, "PUT", `/api/admin/articles/${sp.id}`, { translations: { fr: { title: "Contenu sponsorisé", content: "<p>Pub.</p>" } }, authorName: "Rédaction" })).status, 200);
+  await db().query("UPDATE articles SET sponsored = true WHERE id = $1", [sp.id]);
+  assert.equal((await as(chef, "POST", `/api/admin/articles/${sp.id}/status`, { status: "publie" })).status, 200);
+  assert.ok(got("com").some((d) => d.title === "Article sponsorisé publié"), "commercial prévenu");
+
+  // contact « Publicité » → commercial prévenu ; « Rédaction » → non
+  await db().query(`INSERT INTO site_settings (key, value) VALUES ('contactCategories', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(["Rédaction", "Correction", "Publicité", "Partenariat", "Recrutement", "Autre"])]);
+  const base = { name: "Annonceur SA", email: "pub@example.org", subject: "Encart", message: "Nous voulons un encart publicitaire.", hp: "", ts: formTs() };
+  assert.equal((await call("POST", "/api/contact", { body: { ...base, category: "Rédaction" }, headers: ip(240) })).status, 200);
+  assert.equal(got("com").filter((d) => d.title.startsWith("Demande")).length, 0);
+  assert.equal((await call("POST", "/api/contact", { body: { ...base, category: "Publicité" }, headers: ip(241) })).status, 200);
+  assert.equal(got("com").filter((d) => d.title === "Demande : Publicité").length, 1);
+
+  // programmé incomplet et échu → rédaction prévenue une seule fois
+  await db().query("INSERT INTO articles (id, slug, status, category_slug, author_name, published_at) VALUES ('blq-1', 'bloque-1', 'programme', NULL, 'Rédaction', now() - interval '5 minutes')");
+  await db().query("INSERT INTO article_translations (article_id, lang, title, content, reviewed) VALUES ('blq-1', 'fr', 'Bloqué', '<p>Texte</p>', true)");
+  const { warnBlocked } = require("../server/scheduled");
+  assert.ok(await warnBlocked() >= 1, "au moins notre article bloqué (d'autres tests en laissent un)");
+  assert.equal(await warnBlocked(), 0, "une seule alerte");
+  assert.ok(got("chef").some((d) => d.title === "Article programmé bloqué" && d.body.includes("bloque-1")));
+  delete process.env.FCM_TEST_SINK;
+});

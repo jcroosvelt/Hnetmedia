@@ -232,6 +232,10 @@ async function update(s, id, body) {
   return get(s, id);
 }
 
+/** Comptes à prévenir pour un article : celui qui l'a créé et la personne liée à la signature. */
+const authorUserIds = (a) => [a.created_by, a.author_user_id].filter((x, i, arr) => x && arr.indexOf(x) === i);
+const titleOf = async (a) => ((await getDb().query("SELECT title FROM article_translations WHERE article_id = $1 AND lang = $2", [a.id, a.original_lang]))[0] || {}).title || a.slug;
+
 async function setStatus(s, id, body) {
   const status = v.oneOf(body, "status", ["brouillon", "programme", "publie", "archive"], { label: "Statut" });
   const need = status === "archive" ? "article.archive" : "article.publish";
@@ -266,8 +270,19 @@ async function setStatus(s, id, body) {
   if ((status === "publie" || status === "programme") && a.status !== status) {
     const tr = (await db.query("SELECT title FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
     await push.notify(status === "publie"
-      ? { channel: "publication", title: "Article publié", body: (tr && tr.title) || a.slug, url: `/article/${a.slug}` }
-      : { channel: "publication", title: "Article programmé", body: `${(tr && tr.title) || a.slug} — ${new Date(publishedAt).toLocaleString("fr-FR", { timeZone: "America/Port-au-Prince", dateStyle: "short", timeStyle: "short" })}`, url: "/admin#/articles" });
+      ? { permission: "article.edit_any", channel: "publication", title: "Article publié", body: (tr && tr.title) || a.slug, url: `/article/${a.slug}` }
+      : { permission: "article.edit_any", channel: "publication", title: "Article programmé", body: `${(tr && tr.title) || a.slug} — ${new Date(publishedAt).toLocaleString("fr-FR", { timeZone: "America/Port-au-Prince", dateStyle: "short", timeStyle: "short" })}`, url: "/admin#/articles" });
+  }
+  // Retour à l'auteur (journaliste, contributeur…) quand quelqu'un d'autre agit sur son article.
+  if (a.status !== status) {
+    const label = { publie: "Votre article est publié", programme: "Votre article est programmé", archive: "Votre article a été archivé", brouillon: "Votre article est repassé en brouillon" }[status];
+    await push.notify({ userIds: authorUserIds(a), excludeUserId: s.user.id, channel: "publication", title: label, body: await titleOf(a), url: `/admin#/articles/${id}` });
+    // Traduction anglaise à relire (éditeurs, rédaction en chef) : seulement à la publication.
+    if (status === "publie") {
+      const en = (await db.query("SELECT 1 FROM article_translations WHERE article_id = $1 AND lang = 'en' AND NOT reviewed AND btrim(title) <> ''", [id]))[0];
+      if (en && a.original_lang !== "en") await push.notify({ permission: "translation.edit", excludeUserId: s.user.id, channel: "publication", title: "Traduction anglaise à valider", body: await titleOf(a), url: `/admin#/articles/${id}` });
+      if (a.sponsored) await push.notify({ permission: "article.sponsor", excludeUserId: s.user.id, channel: "publication", title: "Article sponsorisé publié", body: await titleOf(a), url: `/article/${a.slug}` });
+    }
   }
   return { ...(await get(s, id)), rebuildTriggered: rebuilt };
 }
@@ -289,6 +304,18 @@ async function requestReview(s, id) {
   return get(s, id);
 }
 
+/** Un approbateur renvoie un article soumis à son auteur, avec un mot d'explication facultatif. */
+async function returnForChanges(s, id, body) {
+  if (!can(s, "article.publish")) throw new HttpError(403, "Vous n'avez pas les droits pour cette action.");
+  const a = await load(id);
+  if (!a.review_requested_at) throw new HttpError(400, "Cet article n'est pas en attente d'approbation.");
+  const note = text(body && body.note, 200);
+  await getDb().query("UPDATE articles SET review_requested_at = NULL, review_reminded_at = NULL WHERE id = $1", [id]);
+  await audit(s.user.id, "article.renvoye", "article", id, { note: note || null });
+  await push.notify({ userIds: authorUserIds(a), excludeUserId: s.user.id, channel: "publication", title: "Article renvoyé pour modifications", body: `${await titleOf(a)}${note ? " — " + note : ""}`, url: `/admin#/articles/${id}` });
+  return get(s, id);
+}
+
 async function setSponsored(s, id, body) {
   if (!can(s, "article.sponsor")) throw new HttpError(403, "Vous n'avez pas les droits pour cette action.");
   const a = await load(id);
@@ -306,6 +333,7 @@ async function addCorrection(s, id, body) {
   if (!t) throw new HttpError(400, "Le texte de la correction est obligatoire.", { field: "text" });
   await getDb().query("INSERT INTO corrections (article_id, text, created_by) VALUES ($1, $2, $3)", [id, t, s.user.id]);
   await audit(s.user.id, "article.correction", "article", id);
+  await push.notify({ userIds: authorUserIds(a), excludeUserId: s.user.id, channel: "publication", title: "Correction publiée sur votre article", body: await titleOf(a), url: `/admin#/articles/${id}` });
   if (a.status === "publie") await triggerRebuild(`correction ${a.slug}`);
   return get(s, id);
 }
@@ -319,4 +347,4 @@ async function remove(s, id) {
   return { ok: true };
 }
 
-module.exports = { list, get, create, update, setStatus, requestReview, setSponsored, addCorrection, remove, slugify };
+module.exports = { list, get, create, update, setStatus, requestReview, returnForChanges, setSponsored, addCorrection, remove, slugify };

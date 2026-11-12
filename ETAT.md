@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : « article à approuver » (notification + bouton) et point d'entrée « commentaires » prêt.
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : notifications push pour tous les rôles (retours aux auteurs, traductions, sécurité, commercial).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -22,6 +22,7 @@
 | Réglages | ✅ | Nom, slogan, réseaux sociaux, mentions légales, types de demande, textes anglais |
 | Favicon et icônes | ✅ | Symbole réel du logo |
 | Article à approuver | ✅ Code en ligne (notification active avec la clé Firebase) | Un rédacteur sans droit de publier clique « Soumettre » → les approbateurs reçoivent « Article à approuver » ; badge « À approuver » dans la liste ; rappel unique après 2 h ; testé avec un faux Firebase |
+| Notifications par rôle | ✅ Code en ligne (actives avec la clé Firebase) | **Administrateur** : compte verrouillé, nouveau compte. **Rédacteur en chef** : article à approuver, programmé bloqué, messages, abonnés. **Éditeur** : traduction anglaise à valider, article publié. **Journaliste / contributeur** : leur article publié, programmé, archivé, renvoyé pour modifications, corrigé. **Commercial** : demandes publicité / partenariat, article sponsorisé publié. Jamais de notification à l'auteur de l'action ; testé avec un faux Firebase |
 | Notifications push (appli Android) | ⚠️ Code prêt, inactif tant que la clé Firebase n'est pas dans Vercel | Nouveau message de contact, nouvel abonné confirmé, article publié / programmé ; rappels des messages non traités (30 min puis toutes les 2 h, 3 maximum) via le cron existant ; testé avec un faux Firebase, pas encore sur un vrai téléphone |
 
 ## 2. Ce qui n'est PAS actif (et pourquoi)
@@ -64,7 +65,7 @@
 
 ## 6. Qualité
 
-- Tests automatiques : **21 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
+- Tests automatiques : **22 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
 - La construction du site échoue si une phrase de l'interface n'a pas de traduction anglaise
 - Base de production : migrations **0001 à 0009** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
 
@@ -72,6 +73,7 @@
 
 | Date | Modification |
 |---|---|
+| 12 nov. | Notifications pour tous les rôles : `push.notify` cible aussi des comptes précis ; « Renvoyer pour modifications » (`POST articles/:id/review-return`) ; alertes sécurité et comptes ; commercial ; programmés bloqués (une seule alerte) |
 | 12 nov. | « Article à approuver » : migration 0009, `POST /api/admin/articles/:id/review`, bouton « Demander l'approbation », badge, rappel unique ; `push.notifyNewComment` prêt pour les futurs commentaires |
 | 12 nov. | Notifications push pour l'appli Android : table `device_tokens` (migration 0008), `POST/DELETE /api/admin/devices`, `server/push.js` (Firebase HTTP v1), déclencheurs contact / abonné / publication, rappels dans `/api/scheduled` |
 | 11 nov. | Création de ce fichier d'état |

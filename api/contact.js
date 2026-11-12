@@ -58,5 +58,10 @@ module.exports = handler(["POST"], async (req, res) => {
     body: `${msg.name} — ${msg.subject || msg.category}`, url: "/admin#/messages",
   });
 
+  // Demandes de publicité / partenariat : aussi pour la personne qui gère les partenaires (rôle commercial).
+  if (/publicit|partenar/i.test(msg.category)) {
+    await push.notify({ permission: "partner.manage", channel: "messages", title: `Demande : ${msg.category}`, body: `${msg.name} — ${msg.subject || msg.category}`, url: "/admin#/messages" });
+  }
+
   send(res, 200, { ok: true, message: "Votre message a bien été reçu. La rédaction vous répondra par e-mail." });
 });

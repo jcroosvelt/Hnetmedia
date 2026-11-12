@@ -16,6 +16,7 @@
  *   PUT  articles/:id                 contenu, traductions, tags, sources, image
  *   POST articles/:id/status          { status, publishedAt? }
  *   POST articles/:id/review          demande d'approbation (brouillon → notification « Article à approuver »)
+ *   POST articles/:id/review-return   { note? } un approbateur renvoie l'article à son auteur
  *   POST articles/:id/sponsored       { sponsored }
  *   POST articles/:id/corrections     { text }
  *   DELETE articles/:id
@@ -45,6 +46,7 @@ const catalog = require("../server/catalog");
 const pages = require("../server/pages");
 const { checkOrigin, safeEqual, clientIp, fingerprint } = require("../server/security");
 const { limit } = require("../server/ratelimit");
+const push = require("../server/push");
 
 const MAX_DEVICES_PER_USER = 10;
 
@@ -147,6 +149,7 @@ async function articlesRoute(req, res, parts) {
   if (id && !sub && m === "PUT") return send(res, 200, { ok: true, article: await articles.update(s, id, await readBody(req)) });
   if (id && !sub && m === "DELETE") return send(res, 200, await articles.remove(s, id));
   if (id && sub === "status" && m === "POST") return send(res, 200, { ok: true, article: await articles.setStatus(s, id, await readBody(req)) });
+  if (id && sub === "review-return" && m === "POST") return send(res, 200, { ok: true, article: await articles.returnForChanges(s, id, await readBody(req)) });
   if (id && sub === "review" && m === "POST") return send(res, 200, { ok: true, article: await articles.requestReview(s, id) });
   if (id && sub === "sponsored" && m === "POST") return send(res, 200, { ok: true, article: await articles.setSponsored(s, id, await readBody(req)) });
   if (id && sub === "corrections" && m === "POST") return send(res, 201, { ok: true, article: await articles.addCorrection(s, id, await readBody(req)) });
@@ -357,6 +360,7 @@ async function usersRoute(req, res, parts) {
          SELECT $1, $2, $3, r.id, now() FROM roles r WHERE r.code = $4 RETURNING id`, [email, name, hash, role]);
       if (!rows.length) throw new HttpError(400, "Rôle inconnu.", { field: "role" });
       await auth.audit(s.user.id, "compte.creation", "user", rows[0].id, { email, role });
+      await push.notify({ permission: "user.manage", excludeUserId: s.user.id, channel: "messages", title: "Nouveau compte créé", body: `${name} — ${role}`, url: "/admin#/comptes" });
       return send(res, 201, { ok: true, id: rows[0].id });
     } catch (e) {
       if (e.code === "23505") throw new HttpError(409, "Un compte existe déjà avec cette adresse.", { field: "email" });

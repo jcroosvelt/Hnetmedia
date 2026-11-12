@@ -79,19 +79,22 @@ async function sendOne(c, token, data) {
 }
 
 /**
- * Notifie les appareils des comptes actifs qui possèdent `permission` (null = tous les comptes).
+ * Notifie les appareils des comptes actifs qui possèdent `permission` (null = tous), ou seulement les comptes
+ * `userIds` si fourni ; `excludeUserId` écarte l'auteur de l'action (on ne le prévient pas de ce qu'il vient de faire).
  * Ne lève jamais d'exception. Renvoie le nombre d'envois réussis.
  */
-async function notify({ permission = null, channel, title, body, url = "/admin" }) {
+async function notify({ permission = null, userIds = null, excludeUserId = null, channel, title, body, url = "/admin" }) {
   try {
     if (!isConfigured()) return 0;
     const c = process.env.FCM_TEST_SINK ? { projectId: "test" } : credentials();
     const db = getDb();
     const rows = await db.query(
       `SELECT d.token FROM device_tokens d JOIN users u ON u.id = d.user_id AND u.active
-       WHERE $1::text IS NULL OR EXISTS (
-         SELECT 1 FROM role_permissions rp WHERE rp.role_id = u.role_id AND rp.permission_code = $1::text)`,
-      [permission]);
+       WHERE ($2::uuid[] IS NULL OR u.id = ANY($2::uuid[]))
+         AND ($3::uuid IS NULL OR u.id <> $3::uuid)
+         AND ($1::text IS NULL OR EXISTS (
+           SELECT 1 FROM role_permissions rp WHERE rp.role_id = u.role_id AND rp.permission_code = $1::text))`,
+      [permission, userIds && userIds.length ? userIds : (userIds ? [] : null), excludeUserId]);
     if (!rows.length) return 0;
     const data = {
       title: cut(title, 80), body: cut(body, 200),

@@ -86,10 +86,14 @@ async function login(req, email, password) {
   const ok = await verifyPassword(password, u.password_hash);
   if (!ok || !u.active) {
     if (!ok) {
-      await db.query(
+      const upd = await db.query(
         `UPDATE users SET failed_logins = failed_logins + 1,
            locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END
-         WHERE id = $1`, [u.id, MAX_FAILS, LOCK_MINUTES]);
+         WHERE id = $1 RETURNING failed_logins`, [u.id, MAX_FAILS, LOCK_MINUTES]);
+      // Sécurité : les administrateurs sont prévenus au moment précis où un compte se verrouille.
+      if (upd[0] && upd[0].failed_logins === MAX_FAILS) {
+        await require("./push").notify({ permission: "user.manage", channel: "messages", title: "Compte verrouillé", body: `${u.display_name} : ${MAX_FAILS} échecs de connexion`, url: "/admin#/comptes" });
+      }
       await audit(u.id, "login.echec", "user", u.id);
     }
     throw generic;

@@ -24,11 +24,11 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAU0lEQVR4nO3PQQ3AIAD
   }
   console.log("— Texte + lien + photo partagés AVANT la connexion");
   let { ctx, page, acks } = await open("partage-ed@h.com");
-  await ctx.addInitScript((png) => { window.__appShare = { subject: "", text: "Réunion de la CEP demain https://example.org/cep-calendrier\nLe calendrier officiel est publié.", files: [{ name: "photo.png", mime: "image/png", data: png }, { name: "clip.mp4", mime: "video/mp4", data: "AAAA" }] }; }, PNG);
+  await ctx.addInitScript((png) => { window.__appShare = { subject: "", text: "Réunion de la CEP demain https://example.org/cep-calendrier\nLe calendrier officiel est publié.", skipped: 1, files: [{ name: "photo.png", mime: "image/png", data: png }, { name: "clip.mp4", mime: "video/mp4", data: "AAAA" }] }; }, PNG);
   await page.goto("/admin"); await page.fill("#l-email", "partage-ed@h.com"); await page.fill("#l-pw", pw); await page.click("button[type=submit]");
   await page.waitForSelector(".hn-dlg input#dlg-title"); ok(true, "la fenêtre « Créer un brouillon ? » s'ouvre après la connexion");
   const intro = await page.textContent(".hn-dlg"); ok(/1 photo/.test(intro) && /1 lien/.test(intro) && /du texte/.test(intro), "résumé du contenu reçu");
-  ok(/1 fichier\(s\) ignoré/.test(intro), "la vidéo est signalée comme non prise en charge");
+  ok(/2 fichier\(s\) ignoré/.test(intro), "la vidéo et le fichier refusé par l'application sont signalés comme ignorés");
   ok(acks.includes("shareack:"), "accusé de réception envoyé à l'application");
   ok((await page.inputValue("#dlg-title")).startsWith("Réunion de la CEP demain"), "titre proposé : première ligne du texte");
   await page.fill("#dlg-alt", "Salle de réunion de la CEP");

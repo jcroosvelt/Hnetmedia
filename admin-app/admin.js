@@ -514,7 +514,7 @@
     var body = url ? text.replace(url, "").trim() : text;
     var files = d.files || [];
     var img = files.filter(function (f) { return /^image\/(jpeg|png|webp)$/.test(f.mime); })[0];
-    var skipped = files.length - (img ? 1 : 0);
+    var skipped = files.length - (img ? 1 : 0) + (parseInt(d.skipped, 10) || 0);
     var firstLine = String(d.subject || body.split("\n")[0] || (url ? "Lien partagé" : "Photo partagée")).trim().slice(0, 200);
     var fields = [{ name: "title", label: "Titre du brouillon", value: firstLine, required: true, max: 300 }];
     if (img) fields.push({ name: "alt", label: "Description de la photo (obligatoire)", required: true, max: 200, hint: "Elle sert aux personnes qui ne voient pas l'image." });

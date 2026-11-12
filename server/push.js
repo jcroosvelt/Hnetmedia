@@ -108,4 +108,15 @@ async function notify({ permission = null, channel, title, body, url = "/admin" 
   }
 }
 
-module.exports = { notify, isConfigured };
+/**
+ * Nouveau commentaire à modérer. Le site n'a PAS encore de système de commentaires : cette fonction est
+ * prête à être appelée par lui (permission : contact.manage, en attendant une permission dédiée).
+ */
+function notifyNewComment({ articleTitle, author, slug }) {
+  return notify({
+    permission: "contact.manage", channel: "comments", title: "Commentaire à modérer",
+    body: `${author || "Un lecteur"} sur « ${articleTitle || slug || "un article"} »`, url: "/admin#/commentaires",
+  });
+}
+
+module.exports = { notify, notifyNewComment, isConfigured };

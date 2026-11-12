@@ -60,6 +60,23 @@ async function remindPending() {
   return rows.length;
 }
 
+/** Rappel unique pour les articles soumis depuis plus de 2 h et toujours en brouillon. */
+async function remindReviews() {
+  if (!push.isConfigured()) return 0;
+  const rows = await getDb().query(`
+    UPDATE articles SET review_reminded_at = now()
+    WHERE status = 'brouillon' AND review_requested_at IS NOT NULL AND review_reminded_at IS NULL
+      AND review_requested_at < now() - interval '2 hours'
+    RETURNING id`);
+  if (!rows.length) return 0;
+  await push.notify({
+    permission: "article.publish", channel: "publication", title: "Rappel : articles à approuver",
+    body: rows.length === 1 ? "1 article attend votre approbation." : `${rows.length} articles attendent votre approbation.`,
+    url: "/admin#/articles",
+  });
+  return rows.length;
+}
+
 async function run() {
   const r = await promoteDue();
   await housekeeping();
@@ -71,8 +88,8 @@ async function run() {
        WHERE a.slug = ANY($1::text[])`, [r.promoted]);
     for (const x of titles) await push.notify({ channel: "publication", title: "Article publié", body: x.title, url: `/article/${x.slug}` });
   }
-  const reminded = await remindPending();
+  const reminded = (await remindPending()) + (await remindReviews());
   return { ...r, rebuild, reminded };
 }
 
-module.exports = { run, promoteDue, remindPending };
+module.exports = { run, promoteDue, remindPending, remindReviews };

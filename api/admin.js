@@ -15,6 +15,7 @@
  *   GET  articles/:id
  *   PUT  articles/:id                 contenu, traductions, tags, sources, image
  *   POST articles/:id/status          { status, publishedAt? }
+ *   POST articles/:id/review          demande d'approbation (brouillon → notification « Article à approuver »)
  *   POST articles/:id/sponsored       { sponsored }
  *   POST articles/:id/corrections     { text }
  *   DELETE articles/:id
@@ -146,6 +147,7 @@ async function articlesRoute(req, res, parts) {
   if (id && !sub && m === "PUT") return send(res, 200, { ok: true, article: await articles.update(s, id, await readBody(req)) });
   if (id && !sub && m === "DELETE") return send(res, 200, await articles.remove(s, id));
   if (id && sub === "status" && m === "POST") return send(res, 200, { ok: true, article: await articles.setStatus(s, id, await readBody(req)) });
+  if (id && sub === "review" && m === "POST") return send(res, 200, { ok: true, article: await articles.requestReview(s, id) });
   if (id && sub === "sponsored" && m === "POST") return send(res, 200, { ok: true, article: await articles.setSponsored(s, id, await readBody(req)) });
   if (id && sub === "corrections" && m === "POST") return send(res, 201, { ok: true, article: await articles.addCorrection(s, id, await readBody(req)) });
   throw new HttpError(404, "Route inconnue.");

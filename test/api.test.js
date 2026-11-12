@@ -990,3 +990,47 @@ test("push : appareils, déclencheurs, rappels sans doublon, jamais bloquant", a
   assert.equal(await remindPending(), 0);
   assert.equal((await db().query("SELECT push_reminders FROM contact_messages WHERE name = 'Ancien'"))[0].push_reminders, 0, "compteur de rappels intact");
 });
+
+/* ═════════════════════════ ARTICLES À APPROUVER + COMMENTAIRES (push) ═════════════════════════ */
+test("push : article à approuver, rappel unique, commentaires prêts mais non branchés", async () => {
+  process.env.FCM_TEST_SINK = "1";
+  global.__pushSent = [];
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 210);
+  const TA = "token-approbateur-0123456789-abcdefghij";
+  assert.equal((await as(admin, "POST", "/api/admin/devices", { token: TA })).status, 200);
+  const mine = () => global.__pushSent.filter((x) => x.token === TA);
+
+  // un journaliste (sans droit de publier) soumet un brouillon complet
+  const pw = "un mot de passe solide 2026";
+  assert.equal((await as(admin, "POST", "/api/admin/users", { email: "jr@hnetmedia.com", name: "Jean Reporter", role: "journaliste", password: pw })).status, 201);
+  const jr = await loginAs("jr@hnetmedia.com", pw, 211);
+  const art = (await as(jr, "POST", "/api/admin/articles", { title: "Reportage à valider", category: "culture" })).json.article;
+  assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {})).status, 400, "contenu obligatoire avant de soumettre");
+  assert.equal((await as(jr, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Reportage à valider", content: "<p>Texte du reportage.</p>" } }, authorName: "Jean Reporter" })).status, 200);
+  const r = await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {});
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.article.reviewRequestedAt);
+  assert.equal(mine().length, 1);
+  assert.equal(mine()[0].data.title, "Article à approuver");
+  assert.ok(mine()[0].data.body.includes("Reportage à valider"));
+  assert.equal(mine()[0].data.url, `/admin#/articles/${art.id}`);
+  assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {})).status, 200, "redemande sans doublon");
+  assert.equal(mine().length, 1, "pas de seconde notification");
+
+  // rappel unique après 2 h ; la publication efface la demande
+  const { remindReviews } = require("../server/scheduled");
+  assert.equal(await remindReviews(), 0, "trop tôt");
+  await db().query("UPDATE articles SET review_requested_at = now() - interval '3 hours' WHERE id = $1", [art.id]);
+  assert.equal(await remindReviews(), 1);
+  assert.equal(await remindReviews(), 0, "un seul rappel");
+  assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+  assert.equal((await db().query("SELECT review_requested_at FROM articles WHERE id = $1", [art.id]))[0].review_requested_at, null);
+
+  // commentaires : prêt pour le futur système (canal « comments »), jamais déclenché aujourd'hui
+  const before = mine().length;
+  await require("../server/push").notifyNewComment({ articleTitle: "Reportage à valider", author: "Lectrice", slug: "reportage" });
+  const c = mine().slice(before);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].data.channel, "comments");
+  delete process.env.FCM_TEST_SINK;
+});

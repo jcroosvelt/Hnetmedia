@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : notifications push vers l'application Android (côté site).
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : « article à approuver » (notification + bouton) et point d'entrée « commentaires » prêt.
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -21,6 +21,7 @@
 | Pages fixes (6) | ✅ | À propos, Charte, Publicité, CGU, Confidentialité, Cookies : modifiables en FR et EN |
 | Réglages | ✅ | Nom, slogan, réseaux sociaux, mentions légales, types de demande, textes anglais |
 | Favicon et icônes | ✅ | Symbole réel du logo |
+| Article à approuver | ✅ Code en ligne (notification active avec la clé Firebase) | Un rédacteur sans droit de publier clique « Soumettre » → les approbateurs reçoivent « Article à approuver » ; badge « À approuver » dans la liste ; rappel unique après 2 h ; testé avec un faux Firebase |
 | Notifications push (appli Android) | ⚠️ Code prêt, inactif tant que la clé Firebase n'est pas dans Vercel | Nouveau message de contact, nouvel abonné confirmé, article publié / programmé ; rappels des messages non traités (30 min puis toutes les 2 h, 3 maximum) via le cron existant ; testé avec un faux Firebase, pas encore sur un vrai téléphone |
 
 ## 2. Ce qui n'est PAS actif (et pourquoi)
@@ -30,6 +31,7 @@
 | Newsletter | ⏸️ Désactivée (annoncée « bientôt », formulaire masqué) | Il faut un nom de domaine vérifié chez Resend |
 | E-mail d'alerte « nouveau message » | ⏸️ Non configuré | Demande les variables `RESEND_API_KEY`… dans Vercel (facultatif) |
 | Adresses `redaction@hnetmedia.com`… | ⚠️ Affichées mais ne reçoivent rien | Domaine non possédé (décision du propriétaire : laisser tel quel) |
+| Commentaires des lecteurs | ❌ N'existent pas encore | Le site n'a aucun système de commentaires ; la notification « Commentaire à modérer » est prête (`push.notifyNewComment`, canal `comments`) mais rien ne l'appelle |
 | Créole haïtien | ❌ Abandonné | Décision du propriétaire (10 nov.) |
 
 ## 3. À faire par le propriétaire
@@ -62,14 +64,15 @@
 
 ## 6. Qualité
 
-- Tests automatiques : **20 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
+- Tests automatiques : **21 tests API** (dont push ; les 324 vérifications navigateur n'ont pas été relancées pour ce changement) et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
 - La construction du site échoue si une phrase de l'interface n'a pas de traduction anglaise
-- Base de production : migrations **0001 à 0008** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
+- Base de production : migrations **0001 à 0009** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
 
 ## 7. Journal des modifications (le plus récent en haut)
 
 | Date | Modification |
 |---|---|
+| 12 nov. | « Article à approuver » : migration 0009, `POST /api/admin/articles/:id/review`, bouton « Demander l'approbation », badge, rappel unique ; `push.notifyNewComment` prêt pour les futurs commentaires |
 | 12 nov. | Notifications push pour l'appli Android : table `device_tokens` (migration 0008), `POST/DELETE /api/admin/devices`, `server/push.js` (Firebase HTTP v1), déclencheurs contact / abonné / publication, rappels dans `/api/scheduled` |
 | 11 nov. | Création de ce fichier d'état |
 | 10 nov. | **Version anglaise** (`/en`), rubriques modifiables, URLs propres sans `.html`, créole retiré, nettoyage des images inutilisées, image de partage, style des pages fixes et du contact |

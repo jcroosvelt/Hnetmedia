@@ -418,7 +418,7 @@
             h("tbody", null, r.items.map(function (a) {
               return h("tr", null,
                 h("td", { "data-l": "Titre" }, h("a", { class: "hn-link", href: "#/articles/" + encodeURIComponent(a.id), text: a.title || "(sans titre)" })),
-                h("td", { "data-l": "Statut" }, badge(a.status, a.sponsored)),
+                h("td", { "data-l": "Statut" }, badge(a.status, a.sponsored), a.reviewRequestedAt && a.status === "brouillon" ? h("span", { class: "badge badge-scheduled", style: "margin-left:6px", text: "À approuver" }) : null),
                 h("td", { "data-l": "Rubrique", text: catLabel(a.category) }),
                 h("td", { "data-l": "Auteur", text: a.author || "—" }),
                 h("td", { "data-l": "Langues", text: (a.langs || []).join(", ").toUpperCase() || "—" }),
@@ -827,7 +827,7 @@
         saveState.textContent = saving ? "Enregistrement…" : (!editable ? "Lecture seule" : dirty ? "● Modifications non enregistrées" : (savedAt ? "Enregistré à " + fmtTime(savedAt) : "À jour"));
         saveState.className = "wd-savestate" + (dirty ? " dirty" : "");
         publishBtn.innerHTML = "";
-        publishBtn.appendChild(h("span", { class: "wd-tlbl2", text: a.status === "publie" ? "Publié" : a.status === "programme" ? "Programmé" : "Publier" }));
+        publishBtn.appendChild(h("span", { class: "wd-tlbl2", text: a.status === "publie" ? "Publié" : a.status === "programme" ? "Programmé" : rights.publish ? "Publier" : "Soumettre" }));
         publishBtn.appendChild(h("span", { html: pageIcon("chevron", 16) }));
         Array.prototype.forEach.call(langSeg.children, function (b) {
           var l = b.getAttribute("data-l"); var has = l === cur ? !!f.title.value.trim() : !!(tr[l] && tr[l].title.trim());
@@ -911,6 +911,13 @@
             });
           }]);
         }
+        if (!rights.publish && editable && a.status === "brouillon") entries.push([a.reviewRequestedAt ? "Approbation demandée ✔" : "Demander l'approbation", function () {
+          if (a.reviewRequestedAt) { toast("Déjà soumis le " + fmt(a.reviewRequestedAt) + " : un responsable va l'examiner."); return; }
+          if (dirty) { toast("Enregistrez d'abord vos modifications.", true); return; }
+          api("POST", "articles/" + encodeURIComponent(a.id) + "/review", {}).then(function (r) {
+            a.reviewRequestedAt = r.article.reviewRequestedAt; renderPublishMenu(); toast("Article soumis : les approbateurs sont prévenus.");
+          }).catch(function (x) { toast(x.message, true); });
+        }]);
         if (rights.publish && a.status === "publie") entries.push(["Dépublier (brouillon)", function () {
           confirmBox("L'article ne sera plus visible sur le site après la prochaine mise à jour.", { title: "Dépublier ?", confirm: "Dépublier" }).then(function (ok) { if (ok) changeStatus("brouillon", null, "Article repassé en brouillon."); });
         }]);

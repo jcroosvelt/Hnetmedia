@@ -56,7 +56,7 @@ async function list(s, q) {
   const off = Math.max(parseInt(q.offset, 10) || 0, 0);
   params.push(lim, off);
   return db.query(
-    `SELECT a.id, a.slug, a.status, a.type, a.sponsored, a.category_slug AS category, a.published_at, a.updated_at,
+    `SELECT a.id, a.slug, a.status, a.type, a.sponsored, a.review_requested_at AS "reviewRequestedAt", a.category_slug AS category, a.published_at, a.updated_at,
             t.title, COALESCE(au.name, a.author_name) AS author,
             (SELECT array_agg(lang::text ORDER BY lang) FROM article_translations x WHERE x.article_id = a.id) AS langs
      FROM articles a
@@ -81,6 +81,7 @@ async function get(s, id) {
     id: a.id, slug: a.slug, status: a.status, type: a.type, sponsored: a.sponsored, featured: a.featured,
     urgent: a.urgent, recommended: a.recommended, category: a.category_slug, subcategory: a.subcategory,
     authorId: a.author_id, authorName: a.author_name, originalLang: a.original_lang, readingTime: a.reading_time,
+    reviewRequestedAt: a.review_requested_at,
     publishedAt: a.published_at, createdAt: a.created_at, updatedAt: a.updated_at,
     mainImage: a.img_url ? { url: a.img_url, alt: a.img_alt, caption: a.img_caption, credit: a.img_credit } : null,
     translations: Object.fromEntries(translations.map((t) => [t.lang, t])),
@@ -256,7 +257,7 @@ async function setStatus(s, id, body) {
     publishedAt = when;
   }
 
-  await db.query("UPDATE articles SET status = $2::article_status, published_at = $3, updated_by = $4 WHERE id = $1",
+  await db.query("UPDATE articles SET status = $2::article_status, published_at = $3, updated_by = $4, review_requested_at = NULL, review_reminded_at = NULL WHERE id = $1",
     [id, status, publishedAt, s.user.id]);
   await audit(s.user.id, `article.statut.${status}`, "article", id, { avant: a.status, publishedAt });
   // Rebuild si la partie publique change (publication, dépublication, archivage).
@@ -269,6 +270,23 @@ async function setStatus(s, id, body) {
       : { channel: "publication", title: "Article programmé", body: `${(tr && tr.title) || a.slug} — ${new Date(publishedAt).toLocaleString("fr-FR", { timeZone: "America/Port-au-Prince", dateStyle: "short", timeStyle: "short" })}`, url: "/admin#/articles" });
   }
   return { ...(await get(s, id)), rebuildTriggered: rebuilt };
+}
+
+/** L'auteur demande la publication : les personnes qui peuvent publier reçoivent « Article à approuver ». */
+async function requestReview(s, id) {
+  const a = await load(id);
+  if (!canEdit(s, a) && !(can(s, "article.edit_own") && isOwner(s, a))) throw new HttpError(403, "Vous ne pouvez pas soumettre cet article.");
+  if (a.status !== "brouillon") throw new HttpError(400, "Seul un brouillon peut être soumis à l'approbation.");
+  const db = getDb();
+  const fr = (await db.query("SELECT title, content FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
+  if (!fr || !fr.title || !plainText(fr.content)) throw new HttpError(400, "Impossible de soumettre : le titre et le contenu sont obligatoires.");
+  if (!a.category_slug) throw new HttpError(400, "Impossible de soumettre : choisissez une rubrique.");
+  const done = await db.query("UPDATE articles SET review_requested_at = now(), review_reminded_at = NULL WHERE id = $1 AND review_requested_at IS NULL RETURNING id", [id]);
+  if (done.length) {
+    await audit(s.user.id, "article.demande_approbation", "article", id);
+    await push.notify({ permission: "article.publish", channel: "publication", title: "Article à approuver", body: `${fr.title} — ${s.user.name || "rédaction"}`, url: `/admin#/articles/${id}` });
+  }
+  return get(s, id);
 }
 
 async function setSponsored(s, id, body) {
@@ -301,4 +319,4 @@ async function remove(s, id) {
   return { ok: true };
 }
 
-module.exports = { list, get, create, update, setStatus, setSponsored, addCorrection, remove, slugify };
+module.exports = { list, get, create, update, setStatus, requestReview, setSponsored, addCorrection, remove, slugify };

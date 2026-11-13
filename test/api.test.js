@@ -1287,3 +1287,18 @@ test("commentaires : dépôt protégé, pré-modération, réponses, droits, not
   const enPage = fs.readFileSync(path.join(out, "en", "article", `${pubArt.slug}.html`), "utf8");
   assert.ok(enPage.includes(">Comments<") && enPage.includes("Send my comment") && !enPage.includes("Envoyer mon commentaire"), "version anglaise traduite");
 });
+
+
+/* ═════════════════════════ IMAGES DU TEXTE : TAILLE ET POSITION ═════════════════════════ */
+test("images du texte : classes de taille/position conservées, toute autre classe ou attribut retiré", async () => {
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 300);
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Images du texte", category: "culture" })).json.article;
+  const html = '<p>Avant</p><figure class="fig-s fig-left evil" onclick="x()" style="position:fixed"><img src="https://example.org/a.png" alt="A" onerror="x()"><figcaption>Légende</figcaption></figure><figure class="fig-l"><img src="https://example.org/b.png" alt="B"></figure><figure class="fig-xxl fig-right"><img src="https://example.org/c.png" alt="C"></figure>';
+  const r = await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Images du texte", content: html } } });
+  assert.equal(r.status, 200, r.text);
+  const saved = r.json.article.translations.fr.content;
+  assert.ok(/<figure class="fig-s fig-left">/.test(saved), "taille et position conservées : " + saved);
+  assert.ok(/<figure class="fig-l">/.test(saved));
+  assert.ok(/<figure class="fig-right">/.test(saved) && !/fig-xxl/.test(saved), "classe inconnue retirée");
+  assert.ok(!/evil|onclick|onerror|position:fixed/.test(saved), "aucune classe ni attribut dangereux conservé");
+});

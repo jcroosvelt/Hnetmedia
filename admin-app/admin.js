@@ -513,7 +513,7 @@
     var url = (text.match(/https?:\/\/[^\s<>"]+/) || [])[0] || null;
     var body = url ? text.replace(url, "").trim() : text;
     var files = d.files || [];
-    var img = files.filter(function (f) { return /^image\/(jpeg|png|webp)$/.test(f.mime); })[0];
+    var img = files.filter(function (f) { return /^image\//.test(f.mime) && !/svg/.test(f.mime); })[0];
     var skipped = files.length - (img ? 1 : 0) + (parseInt(d.skipped, 10) || 0);
     var firstLine = String(d.subject || body.split("\n")[0] || (url ? "Lien partagé" : "Photo partagée")).trim().slice(0, 200);
     var fields = [{ name: "title", label: "Titre du brouillon", value: firstLine, required: true, max: 300 }];
@@ -521,7 +521,7 @@
     var what = [img ? "1 photo" : null, url ? "1 lien" : null, body ? "du texte" : null].filter(Boolean).join(", ");
     ask("Créer un brouillon ?", fields, {
       submit: "Créer le brouillon",
-      intro: "Contenu reçu : " + what + ". Un brouillon sera créé (il ne sera pas publié)." + (img ? "" : " Pensez à ajouter l'image principale (obligatoire) avant de soumettre ou publier.") + (skipped ? " " + skipped + " fichier(s) ignoré(s) : seules les photos JPEG, PNG ou WebP sont acceptées." : "")
+      intro: "Contenu reçu : " + what + ". Un brouillon sera créé (il ne sera pas publié)." + (img ? "" : " Pensez à ajouter l'image principale (obligatoire) avant de soumettre ou publier.") + (skipped ? " " + skipped + " fichier(s) ignoré(s) : une seule image est prise en compte, et elle ne doit pas dépasser 8 Mo." : "")
     }).then(function (v) {
       if (!v) return;
       var upload = img ? prepareImage(b64ToFile(img)).then(function (r) { return uploadImage(r.blob); }) : Promise.resolve(null);
@@ -544,41 +544,78 @@
   if (window.__appShare) window.onAppShare(window.__appShare);
 
   /* ───────── Images : réduction sur l'appareil, envoi, sélecteur ───────── */
-  var MAX_ORIGINAL = 30 * 1024 * 1024;
+  var MAX_ORIGINAL = 20 * 1024 * 1024;
 
   function canvasBlob(canvas, type, quality) {
     return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
   }
 
-  // Réduit la photo (1 600 px au plus) et la ré-encode : fichier léger, et métadonnées (position GPS…) supprimées.
+  // Lit une image quel que soit son format, avec plusieurs méthodes (les WebView Android anciens n'acceptent
+  // pas toutes les options). Résultat : { draw, width, height, close }.
+  function decodeImage(file) {
+    var methods = [];
+    if (window.createImageBitmap) {
+      methods.push(function () { return createImageBitmap(file, { imageOrientation: "from-image" }); }); // orientation EXIF respectée
+      methods.push(function () { return createImageBitmap(file); });
+    }
+    methods.push(function () { // repli universel : balise <img> (le navigateur applique l'orientation EXIF)
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file), im = new Image();
+        im.onload = function () { URL.revokeObjectURL(url); im.__ok = true; resolve(im); };
+        im.onerror = function () { URL.revokeObjectURL(url); reject(new Error("decode")); };
+        im.src = url;
+      });
+    });
+    function next(i) {
+      if (i >= methods.length) return Promise.reject(new Error("decode"));
+      return Promise.resolve().then(methods[i]).then(function (d) {
+        var w = d.naturalWidth || d.width, h = d.naturalHeight || d.height;
+        if (!w || !h) throw new Error("decode");
+        return { draw: d, width: w, height: h, close: function () { if (d.close) d.close(); } };
+      }).catch(function () { return next(i + 1); });
+    }
+    return next(0);
+  }
+
+  // Prépare n'importe quelle image (JPEG, PNG, WebP, GIF, BMP, AVIF, HEIC si l'appareil sait la lire…, jusqu'à 20 Mo) :
+  // réduite à 1 600 px au plus et ré-encodée en WebP/JPEG léger ; les métadonnées (position GPS…) sont supprimées.
   function prepareImage(file) {
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.reject(new Error("Format non pris en charge. Utilisez une photo JPEG, PNG ou WebP."));
-    if (file.size > MAX_ORIGINAL) return Promise.reject(new Error("Fichier trop volumineux (30 Mo au maximum)."));
-    var decode = window.createImageBitmap ? createImageBitmap(file, { imageOrientation: "from-image" }) : Promise.reject(new Error("x"));
-    return decode.catch(function () { throw new Error("Impossible de lire cette image."); }).then(function (bmp) {
+    var name = String(file.name || ""), type = String(file.type || "").toLowerCase();
+    if (/^image\/svg/.test(type) || /\.svgz?$/i.test(name)) return Promise.reject(new Error("Les images SVG ne sont pas acceptées (sécurité). Exportez-la en PNG ou en JPEG."));
+    if (type && !/^image\//.test(type) && type !== "application/octet-stream") return Promise.reject(new Error("Ce fichier n'est pas une image."));
+    if (file.size > MAX_ORIGINAL) return Promise.reject(new Error("Fichier trop volumineux (20 Mo au maximum)."));
+    if (!file.size) return Promise.reject(new Error("Ce fichier est vide."));
+    return decodeImage(file).catch(function () {
+      var heic = /\.(heic|heif)$/i.test(name) || /hei[cf]/.test(type);
+      throw new Error(heic
+        ? "Ce format (HEIC/HEIF) n'est pas lisible par ce navigateur. Réglez l'appareil photo sur « JPEG / plus compatible », ou envoyez la photo par la galerie (conversion automatique), puis réessayez."
+        : "Impossible de lire cette image : format non reconnu ou fichier abîmé. Essayez une photo JPEG, PNG ou WebP.");
+    }).then(function (bmp) {
       function render(maxSide, type, quality, flatten) {
         var scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
         var w = Math.max(1, Math.round(bmp.width * scale)), hgt = Math.max(1, Math.round(bmp.height * scale));
         var c = document.createElement("canvas");
         c.width = w; c.height = hgt;
         var ctx = c.getContext("2d");
+        if (!ctx) throw new Error("Impossible de préparer cette image (mémoire insuffisante). Choisissez une image plus petite.");
         if (flatten) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, hgt); }
-        ctx.drawImage(bmp, 0, 0, w, hgt);
+        ctx.drawImage(bmp.draw, 0, 0, w, hgt);
         return canvasBlob(c, type, quality).then(function (blob) { return { blob: blob, width: w, height: hgt }; });
       }
-      var tries = [[1600, 0.85], [1600, 0.72], [1280, 0.7], [1000, 0.65]];
+      var tries = [[1600, 0.85], [1600, 0.72], [1280, 0.7], [1000, 0.65], [800, 0.6]];
+      var LIMIT = 1.9 * 1024 * 1024;
       function attempt(i) {
         return render(tries[i][0], "image/webp", tries[i][1], false).then(function (r) {
           if (!r.blob || r.blob.type !== "image/webp") return render(tries[i][0], "image/jpeg", Math.min(0.88, tries[i][1] + 0.03), true);
           return r;
         }).then(function (r) {
-          if (!r.blob) throw new Error("Impossible de préparer cette image.");
-          if (r.blob.size > 1.9 * 1024 * 1024 && i < tries.length - 1) return attempt(i + 1);
-          if (r.blob.size > 1.9 * 1024 * 1024) throw new Error("Cette image reste trop lourde après réduction. Choisissez-en une plus petite.");
+          if (!r.blob) throw new Error("Impossible de préparer cette image. Essayez-en une autre.");
+          if (r.blob.size > LIMIT && i < tries.length - 1) return attempt(i + 1);
+          if (r.blob.size > LIMIT) throw new Error("Cette image reste trop lourde après réduction. Essayez-en une autre.");
           return r;
         });
       }
-      return attempt(0).then(function (r) { if (bmp.close) bmp.close(); return r; }, function (e) { if (bmp.close) bmp.close(); throw e; });
+      return attempt(0).then(function (r) { bmp.close(); return r; }, function (e) { bmp.close(); throw e; });
     });
   }
 
@@ -614,7 +651,7 @@
       var alt = h("input", { id: "img-alt", type: "text", maxlength: 300, value: current ? current.alt : "", autocomplete: "off" });
       var cap = h("input", { id: "img-cap", type: "text", maxlength: 300, value: current ? current.caption : "", autocomplete: "off" });
       var cred = options.credit ? h("input", { id: "img-cred", type: "text", maxlength: 150, value: current ? current.credit : "", autocomplete: "off" }) : null;
-      var fileIn = h("input", { id: "img-file", type: "file", accept: "image/jpeg,image/png,image/webp" });
+      var fileIn = h("input", { id: "img-file", type: "file", accept: "image/*" });
       var urlIn = h("input", { id: "img-url", type: "url", placeholder: "https://…", autocomplete: "off", value: current && /^https:/.test(current.src || "") ? current.src : "" });
       var prevImg = h("img", { alt: "Aperçu de l'image choisie", class: "pk-prev-img" });
       var prevInfo = h("p", { class: "hn-hint", style: "margin:6px 0 0" });
@@ -629,7 +666,7 @@
       var panes = {
         file: h("div", { class: "pk-pane", "data-p": "file" },
           h("label", { class: "pk-file", for: "img-file" }, h("span", { html: pageIcon("upload", 22) }), h("span", { text: "Choisir une photo sur cet appareil" }), fileIn),
-          h("p", { class: "hn-hint", text: "La photo est réduite automatiquement (1 600 px au plus) et ses informations cachées, comme la position GPS, sont supprimées." })),
+          h("p", { class: "hn-hint", text: "Tous les formats d'image sont acceptés, jusqu'à 20 Mo. La photo est réduite automatiquement à une taille idéale (1 600 px au plus) et ses informations cachées, comme la position GPS, sont supprimées." })),
         lib: h("div", { class: "pk-pane", "data-p": "lib", hidden: true }, grid),
         url: h("div", { class: "pk-pane", "data-p": "url", hidden: true },
           h("label", { for: "img-url", text: "Adresse de l'image (https://…)" }), urlIn,

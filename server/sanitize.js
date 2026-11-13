@@ -13,11 +13,14 @@ const OPTIONS = {
     "table", "thead", "tbody", "tr", "th", "td", "caption", "code", "pre", "span"],
   allowedAttributes: {
     p: ["style"], h2: ["style"], h3: ["style"], h4: ["style"],
+    figure: ["class"],
     a: ["href", "title", "rel", "target"],
     img: ["src", "alt", "title", "width", "height", "loading"],
     th: ["scope", "colspan", "rowspan"], td: ["colspan", "rowspan"],
     blockquote: ["cite"], q: ["cite"],
   },
+  // Figures : seulement les classes de taille et de position de l'éditeur (fig-s/m/l, fig-left/right).
+  allowedClasses: { figure: ["fig-s", "fig-m", "fig-l", "fig-left", "fig-right"] },
   // Seul l'alignement du texte est toléré dans « style ».
   allowedStyles: { "*": { "text-align": [/^(left|right|center|justify)$/] } },
   allowedSchemes: ["https", "http", "mailto"],

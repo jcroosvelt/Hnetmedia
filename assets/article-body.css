@@ -23,6 +23,21 @@
 .article-body hr{border:none;border-top:1px solid var(--gray-lt);margin:30px 0}
 .article-body figure{margin:26px 0}
 .article-body figure img{width:100%;height:auto;border-radius:var(--r-sm)}
+/* Taille et position des images du texte (choisies dans l'éditeur) : s = ⅓, m = ½, l = ¾ de la largeur ; left/right = le texte entoure l'image */
+.article-body figure.fig-s,.article-body figure.fig-m,.article-body figure.fig-l{margin-left:auto;margin-right:auto}
+.article-body figure.fig-s{width:33%}
+.article-body figure.fig-m{width:50%}
+.article-body figure.fig-l{width:75%}
+.article-body figure.fig-left{float:left;margin:6px 24px 14px 0}
+.article-body figure.fig-right{float:right;margin:6px 0 14px 24px}
+.article-body::after{content:"";display:block;clear:both}
+.article-body h2,.article-body h3,.article-body h4,.article-body table,.article-body blockquote,.article-body hr{clear:both}
+@media (max-width:600px){
+  .article-body figure.fig-s{width:55%}
+  .article-body figure.fig-m{width:75%}
+  .article-body figure.fig-l{width:90%}
+  .article-body figure.fig-left,.article-body figure.fig-right{float:none;margin:22px auto}
+}
 .article-body figcaption{font-size:12px;line-height:1.2;color:var(--gray-md);margin-top:8px}
 .article-body table{display:block;width:100%;overflow-x:auto;border-collapse:collapse;margin:24px 0;font-size:13.5px;line-height:1.2}
 .article-body th,.article-body td{border:1px solid var(--gray-lt);padding:8px 10px;text-align:left;vertical-align:top;min-width:90px}

@@ -101,9 +101,33 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     ok(/https:\/\//.test(await page.textContent(".hn-dlg .hn-alert")), "adresse non sécurisée refusée DANS la fenêtre");
     ok((await page.inputValue("#img-alt")) === "Description", "la saisie n'est pas perdue");
     await page.click('.wd-seg button[data-t=file]');
-    await page.setInputFiles("#img-file", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("pas une image") });
-    await page.waitForFunction(() => /Format non pris en charge/.test(document.querySelector(".hn-dlg .hn-alert").textContent), null, { timeout: 8000 });
-    ok(true, "fichier qui n'est pas une image refusé : « Format non pris en charge… »");
+    const alertText = () => page.evaluate(() => (document.querySelector(".hn-dlg .hn-alert") || {}).textContent || "");
+    const refuse = async (file, re, msg) => {
+      await page.setInputFiles("#img-file", file);
+      await page.waitForFunction((s) => new RegExp(s).test((document.querySelector(".hn-dlg .hn-alert") || {}).textContent || ""), re.source, { timeout: 8000 });
+      ok(true, msg);
+    };
+    const accept = async (file, msg) => {
+      await page.setInputFiles("#img-file", { name: "reset.txt", mimeType: "text/plain", buffer: Buffer.from("x") }).catch(() => {});
+      await page.setInputFiles("#img-file", file);
+      await page.waitForFunction(() => / px/.test((document.querySelector(".pk-prev p") || {}).textContent || "") && /après réduction/.test(document.querySelector(".pk-prev p").textContent), null, { timeout: 15000 }).catch(async (e) => { console.log("  DIAG", msg, "| alerte :", JSON.stringify(await alertText()), "| aperçu :", JSON.stringify(await page.evaluate(() => (document.querySelector(".pk-prev p") || {}).textContent))); throw e; });
+      ok(true, msg + " : " + (await page.textContent(".pk-prev p")));
+    };
+    await refuse({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("pas une image") }, /n'est pas une image/, "fichier qui n'est pas une image refusé : « Ce fichier n'est pas une image. »");
+    await refuse({ name: "logo.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>") }, /SVG/, "image SVG refusée (sécurité)");
+    await refuse({ name: "enorme.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(21 * 1024 * 1024, 1) }, /20 Mo/, "au-delà de 20 Mo : refus clair (« 20 Mo au maximum »)");
+    await refuse({ name: "abimee.jpg", mimeType: "image/jpeg", buffer: Buffer.from("ce ne sont pas des pixels") }, /Impossible de lire/, "fichier abîmé : message clair, pas de blocage");
+    const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+    const bmp = (w, h) => { const row = Math.ceil((w * 3) / 4) * 4, size = 54 + row * h, b = Buffer.alloc(size); b.fill(0x80, 54); b.write("BM"); b.writeUInt32LE(size, 2); b.writeUInt32LE(54, 10); b.writeUInt32LE(40, 14); b.writeInt32LE(w, 18); b.writeInt32LE(h, 22); b.writeUInt16LE(1, 26); b.writeUInt16LE(24, 28); b.writeUInt32LE(row * h, 34); return b; };
+    await accept({ name: "animation.gif", mimeType: "image/gif", buffer: GIF }, "format GIF accepté");
+    await accept({ name: "scan.bmp", mimeType: "image/bmp", buffer: bmp(300, 200) }, "format BMP accepté");
+    await accept({ name: "sans-type.gif", mimeType: "", buffer: GIF }, "fichier sans type déclaré accepté (cas fréquent sur Android)");
+    // WebView ancien : createImageBitmap absent ou refusant l'option d'orientation → repli sur la balise <img>
+    await page.evaluate(() => { window.__cib = window.createImageBitmap; window.createImageBitmap = undefined; });
+    await accept({ name: "ancien-webview.bmp", mimeType: "image/bmp", buffer: bmp(120, 80) }, "WebView ancien (sans createImageBitmap) : image lue quand même");
+    await page.evaluate(() => { window.createImageBitmap = function (f, o) { if (o) return Promise.reject(new TypeError("valeur d'option non valide")); return window.__cib(f); }; });
+    await accept({ name: "option-refusee.bmp", mimeType: "image/bmp", buffer: bmp(120, 80) }, "WebView refusant l'option d'orientation : image lue quand même");
+    await page.evaluate(() => { window.createImageBitmap = window.__cib; });
     const b64 = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 2400; c.height = 1200; const x = c.getContext("2d"); x.fillStyle = "#0A1F44"; x.fillRect(0, 0, 2400, 1200); x.fillStyle = "#FF6B00"; x.fillRect(200, 200, 1000, 500); return c.toDataURL("image/png").split(",")[1]; });
     await page.setInputFiles("#img-file", { name: "photo-originale.png", mimeType: "image/png", buffer: Buffer.from(b64, "base64") });
     await page.waitForFunction(() => /1600 × 800 px/.test(document.querySelector(".pk-prev p").textContent), null, { timeout: 15000 });
@@ -123,6 +147,39 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.waitForSelector(".pk-thumb"); ok((await page.locator(".pk-thumb").count()) >= 1, "médiathèque : l'image téléversée est proposée");
     await page.locator(".pk-thumb").first().click(); await page.fill("#img-alt", "Même image, réutilisée"); await page.click(".hn-dlg button[type=submit]");
     await page.waitForFunction(() => document.querySelectorAll(".hn-ed-prose figure").length === 2, null, { timeout: 8000 }); ok(true, "image de la médiathèque réutilisée (2 images dans l'article)");
+
+    // images du texte : taille, position et déplacement (onglet contextuel « Image »)
+    const figs = () => page.locator(".hn-ed-prose figure");
+    const hasCls = async (c) => (await figs().first().evaluate((e, k) => e.classList.contains(k), c));
+    const widthRatio = () => page.evaluate(() => { const f = document.querySelector(".hn-ed-prose figure"); return f.getBoundingClientRect().width / f.parentElement.getBoundingClientRect().width; });
+    const phone = page.viewportSize().width <= 600; // sur téléphone les images sont un peu plus larges et ne flottent pas (texte trop étroit)
+    const W = phone ? { s: 0.55, m: 0.75, l: 0.9 } : { s: 0.33, m: 0.5, l: 0.75 };
+    await figs().first().click(); await page.waitForTimeout(250);
+    ok(await page.locator('.wd-tab[data-tab=image]').evaluate((e) => e.classList.contains("on") && !e.hidden), "image sélectionnée : l'onglet « Image » apparaît et s'ouvre");
+    ok((await widthRatio()) > 0.95, "par défaut : pleine largeur");
+    await page.click(".hn-ed-fig-s"); await page.waitForTimeout(200);
+    let r1 = await widthRatio(); ok((await hasCls("fig-s")) && Math.abs(r1 - W.s) < 0.04, "taille « Petite » (" + r1.toFixed(2) + (phone ? ", téléphone" : " : un tiers de la largeur") + ")");
+    await page.click(".hn-ed-fig-l"); await page.waitForTimeout(200);
+    r1 = await widthRatio(); ok((await hasCls("fig-l")) && Math.abs(r1 - W.l) < 0.04, "taille « Grande » (" + r1.toFixed(2) + (phone ? ", téléphone" : " : trois quarts de la largeur") + ")");
+    await page.click(".hn-ed-fig-left"); await page.waitForTimeout(200);
+    ok((await hasCls("fig-left")) && (await figs().first().evaluate((e) => getComputedStyle(e).float)) === (phone ? "none" : "left"), "position « À gauche » : " + (phone ? "classe appliquée (pas d'habillage sur téléphone)" : "l'image flotte, le texte l'entoure"));
+    await page.click(".hn-ed-fig-full"); await page.waitForTimeout(200);
+    ok(!(await hasCls("fig-left")) && (await widthRatio()) > 0.95, "pleine largeur : plus d'habillage par le texte");
+    await page.click(".hn-ed-fig-right"); await page.waitForTimeout(200);
+    r1 = await widthRatio(); ok((await hasCls("fig-right")) && (await hasCls("fig-m")) && Math.abs(r1 - W.m) < 0.04, "« À droite » depuis pleine largeur : taille moyenne automatique (" + r1.toFixed(2) + ")");
+    // déplacement : l'image du haut descend d'un bloc, puis remonte
+    const order = () => page.evaluate(() => Array.from(document.querySelector(".hn-ed-prose").children).map((n) => n.tagName.toLowerCase()).join(","));
+    const before = await order();
+    ok((await page.locator(".hn-ed-fig-up").isDisabled()) === (before.split(",")[0] === "figure"), "« Monter » grisé seulement si l'image est déjà en premier");
+    const alts = () => page.evaluate(() => Array.from(document.querySelectorAll(".hn-ed-prose figure img")).map((i) => i.alt).join("|"));
+    const altsBefore = await alts();
+    await page.click(".hn-ed-fig-down"); await page.waitForTimeout(200);
+    const altsAfter = await alts(); ok(altsAfter !== altsBefore && altsAfter.split("|").length === 2 && (await order()).split(",").length === before.split(",").length, "« Descendre » : l'image passe après l'autre, rien n'est perdu (" + altsBefore + " → " + altsAfter + ")");
+    await page.click(".hn-ed-fig-up"); await page.waitForTimeout(200);
+    ok((await alts()) === altsBefore && (await order()) === before, "« Monter » : retour à la place d'origine");
+    await page.click(".hn-ed-fig-s"); await page.click(".hn-ed-fig-left"); await page.waitForTimeout(200);
+    ok((await figs().count()) === 2 && (await hasCls("fig-s")) && (await hasCls("fig-left")), "réglages conservés ; les deux images sont toujours là");
+    await page.click('.wd-tab[data-tab=insertion]');
 
     // tableau
     await page.locator(".hn-ed-prose > p").last().click();
@@ -173,6 +230,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     await page.reload(); await page.waitForSelector(".hn-ed-prose"); await page.waitForTimeout(300);
     const html2 = await page.evaluate(() => document.querySelector(".hn-ed-prose").innerHTML);
     ok(/Un intertitre/.test(html2) && /figcaption/.test(html2) && /<table/.test(html2) && /noopener/.test(html2) && /text-align: ?center/.test(html2) && (html2.match(/<figure/g) || []).length === 2, "contenu intact après rechargement (nettoyé par le serveur)");
+    ok((await page.locator(".hn-ed-prose figure.fig-s.fig-left").count()) === 1, "taille et position de l'image conservées après enregistrement et rechargement (classes acceptées par le serveur)");
     await openPane(); ok((await page.inputValue("#a-tags")).includes("CEP"), "mots-clés conservés"); await closePane();
 
     // Aperçu (onglet Affichage)

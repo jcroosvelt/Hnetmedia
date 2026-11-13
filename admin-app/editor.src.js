@@ -15,6 +15,7 @@ import { TableKit } from "@tiptap/extension-table";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
+import { NodeSelection } from "@tiptap/pm/state";
 
 /* ── Sources d'image acceptées : https, ou une image téléversée sur ce site ── */
 const MEDIA_RE = /^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +29,8 @@ const Figure = Node.create({
   draggable: true,
   selectable: true,
   addAttributes() {
-    return { src: { default: null }, alt: { default: "" }, caption: { default: "" } };
+    // size : s (⅓ de la largeur), m (½), l (¾), full (pleine largeur) ; align : center, left, right (le texte entoure l'image).
+    return { src: { default: null }, alt: { default: "" }, caption: { default: "" }, size: { default: "full" }, align: { default: "center" } };
   },
   parseHTML() {
     return [
@@ -38,17 +40,21 @@ const Figure = Node.create({
           const img = el.querySelector("img");
           if (!img || !allowedSrc(img.getAttribute("src"))) return false;
           const cap = el.querySelector("figcaption");
-          return { src: img.getAttribute("src"), alt: img.getAttribute("alt") || "", caption: cap ? cap.textContent.trim() : "" };
+          const cls = el.getAttribute("class") || "";
+          const size = (/\bfig-(s|m|l)\b/.exec(cls) || [])[1] || "full";
+          const align = (/\bfig-(left|right)\b/.exec(cls) || [])[1] || "center";
+          return { src: img.getAttribute("src"), alt: img.getAttribute("alt") || "", caption: cap ? cap.textContent.trim() : "", size, align };
         },
       },
       { tag: "img[src]", getAttrs: (el) => (allowedSrc(el.getAttribute("src")) ? { src: el.getAttribute("src"), alt: el.getAttribute("alt") || "", caption: "" } : false) },
     ];
   },
   renderHTML({ node }) {
-    const { src, alt, caption } = node.attrs;
+    const { src, alt, caption, size, align } = node.attrs;
     const kids = [["img", { src, alt, loading: "lazy" }]];
     if (caption) kids.push(["figcaption", {}, caption]);
-    return ["figure", {}, ...kids];
+    const cls = [size === "s" || size === "m" || size === "l" ? "fig-" + size : "", align === "left" || align === "right" ? "fig-" + align : ""].filter(Boolean).join(" ");
+    return ["figure", cls ? { class: cls } : {}, ...kids];
   },
   addCommands() {
     return {
@@ -102,6 +108,16 @@ const ICON = {
   zoomOut: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.5-4.5M8 11h6"/>',
   panel: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M15 5v14"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  sizeS: '<rect x="3" y="4" width="18" height="16" rx="1.5" stroke-dasharray="2 2.5"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
+  sizeM: '<rect x="3" y="4" width="18" height="16" rx="1.5" stroke-dasharray="2 2.5"/><rect x="6" y="7.5" width="12" height="9" rx="1"/>',
+  sizeL: '<rect x="3" y="4" width="18" height="16" rx="1.5" stroke-dasharray="2 2.5"/><rect x="4.5" y="6" width="15" height="12" rx="1"/>',
+  sizeFull: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 12h4M17 12h4M5 10l-2 2 2 2M19 10l2 2-2 2"/>',
+  imgLeft: '<rect x="4" y="5" width="8" height="7" rx="1"/><path d="M15 6h5M15 9h5M4 15h16M4 19h16"/>',
+  imgRight: '<rect x="12" y="5" width="8" height="7" rx="1"/><path d="M4 6h5M4 9h5M4 15h16M4 19h16"/>',
+  imgCenter: '<rect x="8" y="9" width="8" height="6" rx="1"/><path d="M4 5h16M4 19h16"/>',
+  moveUp: '<path d="M12 19V6M6 11l6-6 6 6"/>',
+  moveDown: '<path d="M12 5v13M6 13l6 6 6-6"/>',
+  delImg: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M8 9l8 6M16 9l-8 6"/>',
   delTable: '<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16M4 14.5h16M10 5v14M15 5v14"/><path d="M7 8l10 8M17 8L7 16"/>',
 };
 const svgIcon = (name, size = 18) =>
@@ -253,6 +269,46 @@ function create(opts = {}) {
     if (cur) chain().updateFigure(attrs).run(); else chain().setFigure(attrs).run();
   }
 
+  /* Taille et position de l'image sélectionnée */
+  const figAttrs = () => (editor.isActive("figure") ? editor.getAttributes("figure") : null);
+  function setFigSize(size) {
+    const cur = figAttrs(); if (!cur) return;
+    // Une image à côté du texte ne peut pas occuper toute la largeur : on la recentre.
+    const attrs = { size };
+    if (size === "full" && cur.align !== "center") attrs.align = "center";
+    chain().updateFigure(attrs).run();
+  }
+  function setFigAlign(align) {
+    const cur = figAttrs(); if (!cur) return;
+    const attrs = { align };
+    // Pour que le texte entoure l'image, elle ne doit pas être pleine largeur : taille moyenne par défaut.
+    if (align !== "center" && cur.size === "full") attrs.size = "m";
+    chain().updateFigure(attrs).run();
+  }
+  // Déplace l'image d'un bloc vers le haut (-1) ou le bas (+1) ; le glisser-déposer reste possible à la souris.
+  function figIndex() {
+    const sel = editor.state.selection;
+    if (!(sel instanceof NodeSelection) || sel.node.type.name !== "figure") return null;
+    const $pos = editor.state.doc.resolve(sel.from);
+    return { sel, parent: $pos.parent, index: $pos.index() };
+  }
+  function canMoveFig(dir) {
+    const f = figIndex(); if (!f) return false;
+    const target = f.index + dir;
+    return target >= 0 && target < f.parent.childCount;
+  }
+  function moveFig(dir) {
+    const f = figIndex(); if (!f || !canMoveFig(dir)) return;
+    const { sel, parent, index } = f;
+    const node = sel.node, start = sel.from, end = sel.to;
+    let tr = editor.state.tr.delete(start, end);
+    const insertAt = dir < 0 ? start - parent.child(index - 1).nodeSize : start + parent.child(index + 1).nodeSize;
+    tr = tr.insert(insertAt, node);
+    tr = tr.setSelection(NodeSelection.create(tr.doc, insertAt)).scrollIntoView();
+    editor.view.dispatch(tr);
+    editor.view.focus();
+  }
+
   async function insertTable() {
     const v = await ask("Insérer un tableau", [
       { name: "rows", label: "Nombre de lignes", type: "number", value: "3", min: 1, required: true },
@@ -337,7 +393,43 @@ function create(opts = {}) {
     ],
   });
 
+  addTab({
+    id: "image", label: "Image", contextual: true,
+    groups: [
+      { label: "Taille", items: [
+        A("fig-s", "sizeS", "Petite image (un tiers de la largeur)", () => setFigSize("s"), () => (figAttrs() || {}).size === "s", null, { big: true, label: "Petite" }),
+        A("fig-m", "sizeM", "Image moyenne (la moitié de la largeur)", () => setFigSize("m"), () => (figAttrs() || {}).size === "m", null, { big: true, label: "Moyenne" }),
+        A("fig-l", "sizeL", "Grande image (trois quarts de la largeur)", () => setFigSize("l"), () => (figAttrs() || {}).size === "l", null, { big: true, label: "Grande" }),
+        A("fig-full", "sizeFull", "Pleine largeur", () => setFigSize("full"), () => (figAttrs() || { size: "full" }).size === "full", null, { big: true, label: "Pleine" }),
+      ] },
+      { label: "Position", items: [
+        A("fig-left", "imgLeft", "À gauche, le texte entoure l'image", () => setFigAlign("left"), () => (figAttrs() || {}).align === "left", null, { big: true, label: "À gauche" }),
+        A("fig-center", "imgCenter", "Centrée, sans texte à côté", () => setFigAlign("center"), () => (figAttrs() || { align: "center" }).align === "center", null, { big: true, label: "Centrée" }),
+        A("fig-right", "imgRight", "À droite, le texte entoure l'image", () => setFigAlign("right"), () => (figAttrs() || {}).align === "right", null, { big: true, label: "À droite" }),
+      ] },
+      { label: "Déplacer", items: [
+        A("fig-up", "moveUp", "Monter l'image d'un bloc", () => moveFig(-1), null, () => canMoveFig(-1), { big: true, label: "Monter" }),
+        A("fig-down", "moveDown", "Descendre l'image d'un bloc", () => moveFig(1), null, () => canMoveFig(1), { big: true, label: "Descendre" }),
+      ] },
+      { label: "Image", items: [
+        A("fig-edit", "image", "Changer l'image, sa description ou sa légende", editFigure, null, null, { big: true, label: "Modifier" }),
+        A("fig-del", "delImg", "Supprimer l'image", () => chain().deleteSelection().run(), null, null, { big: true, label: "Supprimer" }),
+      ] },
+    ],
+  });
+
   for (const t of opts.extraTabs || []) addTab(t);
+
+  /* Un clic sur une image la sélectionne (souris comme doigt) : ses réglages de taille et de position s'affichent. */
+  content.addEventListener("click", (e) => {
+    const fig = e.target.closest && e.target.closest("figure");
+    if (!fig || !content.contains(fig)) return;
+    try {
+      const pos = editor.view.posAtDOM(fig, 0);
+      const node = editor.state.doc.nodeAt(pos);
+      if (node && node.type.name === "figure") editor.chain().focus().setNodeSelection(pos).run();
+    } catch (_) { /* sélection impossible : sans conséquence */ }
+  });
 
   /* Double-clic sur une image : la modifier. Ctrl+K : lien. */
   content.addEventListener("dblclick", (e) => { if (e.target.closest && e.target.closest("figure")) editFigure(); });
@@ -346,11 +438,22 @@ function create(opts = {}) {
   });
 
   /* ───────── État du ruban et compteurs ───────── */
+  let wasOnFig = false, lastFigPos = -1;
   function refresh() {
     for (const { node, def } of items) {
       if (def.isActive) { const on = !!def.isActive(); node.classList.toggle("is-active", on); node.setAttribute("aria-pressed", String(on)); }
       if (def.isEnabled) node.disabled = !def.isEnabled();
     }
+    const onFig = editor.isActive("figure");
+    const ft = tabs.get("image");
+    if (ft) {
+      ft.btn.hidden = !onFig;
+      const figPos = onFig ? editor.state.selection.from : -1;
+      if (onFig && (!wasOnFig || figPos !== lastFigPos)) showTab("image"); // on touche une image (ou une autre) : ses réglages s'affichent
+      lastFigPos = figPos;
+      if (!onFig && ft.btn.classList.contains("on")) showTab("accueil");
+    }
+    wasOnFig = onFig;
     const inTable = editor.isActive("table");
     const t = tabs.get("tableau");
     if (t) {

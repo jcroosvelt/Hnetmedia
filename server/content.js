@@ -79,8 +79,8 @@ async function loadContent() {
   const articles = arts.filter((a) => {
     const orig = (trBy.get(a.id) || {})[a.originalLang];
     if (!orig) return false; // pas de texte d'origine : jamais publié
-    // un article « programmé » n'est affiché que s'il est encore complet (jamais à moitié publié)
-    return a.status === "publie" || (a.category && (a.authorId || String(a.authorName || "").trim()) && String(orig.content || "").trim());
+    // un article « programmé » n'est affiché que s'il est encore complet : rubrique, signature, texte ET image principale (jamais à moitié publié)
+    return a.status === "publie" || (a.category && a.img_url && (a.authorId || String(a.authorName || "").trim()) && String(orig.content || "").trim());
   }).map((a) => {
     const cor = (corBy.get(a.id) || []).map((c) => ({ date: iso(c.corrected_at), text: c.text }));
     const tr = Object.fromEntries(Object.entries(trBy.get(a.id)).filter(([l]) => l === "fr" || l === "en").map(([l, t]) => [l, toTr(t)]));

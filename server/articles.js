@@ -249,6 +249,7 @@ async function setStatus(s, id, body) {
     const fr = (await db.query("SELECT title, content FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
     if (!fr || !fr.title || !plainText(fr.content)) throw new HttpError(400, "Impossible de publier : le titre et le contenu sont obligatoires.");
     if (!a.category_slug) throw new HttpError(400, "Impossible de publier : choisissez une rubrique.");
+    if (!a.main_media_id) throw new HttpError(400, "Impossible de publier : ajoutez l'image principale (obligatoire). Elle illustre l'article et s'affiche dans les aperçus de liens.", { field: "mainImage" });
     if (!a.author_id && !a.author_name) throw new HttpError(400, "Impossible de publier : indiquez l'auteur ou la signature.");
   }
   if (status === "publie") {
@@ -296,6 +297,7 @@ async function requestReview(s, id) {
   const fr = (await db.query("SELECT title, content FROM article_translations WHERE article_id = $1 AND lang = $2", [id, a.original_lang]))[0];
   if (!fr || !fr.title || !plainText(fr.content)) throw new HttpError(400, "Impossible de soumettre : le titre et le contenu sont obligatoires.");
   if (!a.category_slug) throw new HttpError(400, "Impossible de soumettre : choisissez une rubrique.");
+  if (!a.main_media_id) throw new HttpError(400, "Impossible de soumettre : ajoutez l'image principale (obligatoire). Elle illustre l'article et s'affiche dans les aperçus de liens.", { field: "mainImage" });
   const done = await db.query("UPDATE articles SET review_requested_at = now(), review_reminded_at = NULL WHERE id = $1 AND review_requested_at IS NULL RETURNING id", [id]);
   if (done.length) {
     await audit(s.user.id, "article.demande_approbation", "article", id);

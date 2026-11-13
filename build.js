@@ -263,6 +263,7 @@ ${hreflang}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escAttr(title)}">
 <meta name="twitter:description" content="${escAttr(description)}">
+<meta name="twitter:image" content="${ogImage || BASE_URL + "/og-default.png"}">
 <link rel="alternate" type="application/rss+xml" title="${escAttr(settings.siteName)}" href="${rssHref}">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -544,7 +545,9 @@ function buildArticlePages() {
     const next = publishedArticles[idx - 1];
     const related = publishedArticles.filter((x) => x.slug !== a.slug && x.category === a.category).slice(0, 3);
 
-    const heroBg = coverStyle(a).replace(/^background:/, "");
+    // En-tête de l'article : sa propre image principale uniquement (jamais le logo du site). Sans image (anciens articles), pas d'en-tête.
+    const hasHero = Boolean(a.mainImage && a.mainImage.url);
+    const heroBg = hasHero ? `url('${escAttr(a.mainImage.url)}') center/cover` : "";
 
     const sourcesHtml = (a.sources && a.sources.length)
       ? `<div class="sources-block"><h3>${T("Sources")}</h3><ul>${a.sources.map((s) => `<li><a href="${escAttr(s.url)}" target="_blank" rel="noopener nofollow">${escAttr(s.name)}</a>${s.description ? " — " + escAttr(s.description) : ""}</li>`).join("")}</ul></div>`
@@ -603,12 +606,12 @@ function buildArticlePages() {
     const badges = articleBadges(a);
 
     const body = `
-    <main class="art">
+    <main class="art${hasHero ? "" : " art-plain"}">
       <div class="breadcrumb art-crumbs"><a href="/">${T("Accueil")}</a> / <a href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a> / ${escAttr(a.title)}</div>
-      <div class="art-hero-wrap">
-        <div class="art-hero" role="img" aria-label="${escAttr(a.mainImage && a.mainImage.alt ? a.mainImage.alt : a.title)}" style="background:${heroBg}"></div>
+      ${hasHero ? `<div class="art-hero-wrap">
+        <div class="art-hero" role="img" aria-label="${escAttr(a.mainImage.alt || a.title)}" style="background:${heroBg}"></div>
         <a class="art-back" href="/${cat.slug || a.category}.html" aria-label="${T("Retour à la rubrique")} ${escAttr(catLabel(cat))}">${ICON.back}</a>
-      </div>
+      </div>` : ""}
       <article class="art-sheet">
         <div class="art-chips"><a class="art-chip" href="/${cat.slug || a.category}.html">${escAttr(catLabel(cat))}</a>${badges}</div>
         ${a.kicker ? `<div class="art-kicker">${escAttr(a.kicker)}</div>` : ""}
@@ -648,7 +651,8 @@ function buildArticlePages() {
 
     const seoTitle = (a.seo && a.seo.title) || a.title;
     const seoDesc = (a.seo && a.seo.description) || a.excerpt;
-    const ogImg = absUrl((a.seo && a.seo.ogImage) || (a.mainImage && a.mainImage.url) || undefined);
+    // Aperçu des liens (WhatsApp, Facebook, X…) : l'image principale de l'article d'abord ; image SEO manuelle en secours seulement.
+    const ogImg = absUrl((a.mainImage && a.mainImage.url) || (a.seo && a.seo.ogImage) || undefined);
 
     const articleLd = {
       "@context": "https://schema.org",

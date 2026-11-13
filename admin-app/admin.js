@@ -521,7 +521,7 @@
     var what = [img ? "1 photo" : null, url ? "1 lien" : null, body ? "du texte" : null].filter(Boolean).join(", ");
     ask("Créer un brouillon ?", fields, {
       submit: "Créer le brouillon",
-      intro: "Contenu reçu : " + what + ". Un brouillon sera créé (il ne sera pas publié)." + (skipped ? " " + skipped + " fichier(s) ignoré(s) : seules les photos JPEG, PNG ou WebP sont acceptées." : "")
+      intro: "Contenu reçu : " + what + ". Un brouillon sera créé (il ne sera pas publié)." + (img ? "" : " Pensez à ajouter l'image principale (obligatoire) avant de soumettre ou publier.") + (skipped ? " " + skipped + " fichier(s) ignoré(s) : seules les photos JPEG, PNG ou WebP sont acceptées." : "")
     }).then(function (v) {
       if (!v) return;
       var upload = img ? prepareImage(b64ToFile(img)).then(function (r) { return uploadImage(r.blob); }) : Promise.resolve(null);
@@ -838,7 +838,7 @@
           label("Auteur", "a-author"), f.author, label("Ou signature libre", "a-sign"), f.signature,
           label("Adresse (slug)", "a-slug"), f.slug, label("Mots-clés (séparés par des virgules)", "a-tags"), f.tags,
           rights.publish ? h("div", { class: "hn-checks" }, h("label", { for: "a-feat" }, f.featured, "À la une"), h("label", { for: "a-urg" }, f.urgent, "Urgent"), h("label", { for: "a-rec" }, f.recommended, "Recommandé")) : null]),
-        section("Image principale", false, "img", imgBox),
+        section("Image principale (obligatoire)", !mainImg.url, "img", imgBox),
         section("Sources", false, "src", [h("p", { class: "hn-hint", style: "margin:0 0 10px", text: "Indiquez vos sources : elles apparaissent sous l'article." }), srcBox]),
         section("Référencement", false, "seo", [label("Titre pour les moteurs de recherche (60 caractères conseillés)", "a-seot"), f.seoTitle, label("Description pour les moteurs de recherche (150 caractères conseillés)", "a-seod"), f.seoDesc]),
         section("Corrections publiques", false, "cor", corrBox),
@@ -947,7 +947,15 @@
         }).catch(function (x) { saving = false; refreshChrome(); toast(x.message, true); return false; });
       }
 
+      // Image principale obligatoire pour soumettre ou publier : message clair et ouverture du volet concerné.
+      function needMainImage() {
+        if (mainImg.url) return false;
+        toast("Ajoutez d'abord l'image principale (obligatoire) : elle illustre l'article et s'affiche dans les aperçus de liens.", true);
+        var sec = pane.querySelector('[data-sec="img"]'); if (sec) { sec.open = true; sec.scrollIntoView({ block: "center" }); }
+        return true;
+      }
       function changeStatus(status, extra, okMsg) {
+        if ((status === "publie" || status === "programme") && needMainImage()) return Promise.resolve();
         return (dirty ? save(true) : Promise.resolve(true)).then(function (ok) {
           if (!ok) return;
           return api("POST", "articles/" + encodeURIComponent(a.id) + "/status", Object.assign({ status: status }, extra || {})).then(function (r) {
@@ -989,6 +997,7 @@
         if (!rights.publish && editable && a.status === "brouillon") entries.push([a.reviewRequestedAt ? "Approbation demandée ✔" : "Demander l'approbation", function () {
           if (a.reviewRequestedAt) { toast("Déjà soumis le " + fmt(a.reviewRequestedAt) + " : un responsable va l'examiner."); return; }
           if (dirty) { toast("Enregistrez d'abord vos modifications.", true); return; }
+          if (needMainImage()) return;
           api("POST", "articles/" + encodeURIComponent(a.id) + "/review", {}).then(function (r) {
             a.reviewRequestedAt = r.article.reviewRequestedAt; renderPublishMenu(); toast("Article soumis : les approbateurs sont prévenus.");
           }).catch(function (x) { toast(x.message, true); });
@@ -1043,7 +1052,7 @@
           imgBox.appendChild(label("Texte alternatif (obligatoire)", "a-ialt")); imgBox.appendChild(f.imgAlt);
           imgBox.appendChild(label("Légende", "a-icap")); imgBox.appendChild(f.imgCap);
           imgBox.appendChild(label("Crédit photo", "a-icred")); imgBox.appendChild(f.imgCred);
-        } else imgBox.appendChild(h("p", { class: "hn-muted", text: "Aucune image principale." }));
+        } else imgBox.appendChild(h("p", { class: "hn-alert", role: "alert", text: "Image principale obligatoire : choisissez une image pour pouvoir soumettre ou publier l'article. Elle illustre l'article et s'affiche dans les aperçus de liens (WhatsApp, Facebook, X…). Vous pourrez ensuite ajouter d'autres images dans le texte." }));
         if (editable) {
           imgBox.appendChild(h("div", { class: "hn-actions", style: "margin-top:12px" },
             h("button", { type: "button", class: "hn-btn hn-btn-ghost hn-btn-sm wd-pickmain", text: mainImg.url ? "Changer l'image…" : "Choisir une image…", onclick: function () {

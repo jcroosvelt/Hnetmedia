@@ -150,7 +150,9 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     // volet Propriétés + image principale
     await openPane();
     await page.fill("#a-sign", "La rédaction"); await page.fill("#a-tags", "élections, CEP");
-    await page.click('[data-sec=img] summary'); await page.click(".wd-pickmain"); await page.waitForSelector("#img-alt");
+    ok(await page.$eval("[data-sec=img]", (e) => e.open), "volet « Image principale (obligatoire) » ouvert d'office tant qu'il n'y a pas d'image");
+    ok(/obligatoire/i.test(await page.textContent("[data-sec=img] summary")) && /Image principale obligatoire/.test(await page.textContent("[data-sec=img]")), "l'image principale est signalée comme obligatoire");
+    await page.click(".wd-pickmain"); await page.waitForSelector("#img-alt");
     await page.click('.wd-seg button[data-t=lib]'); await page.waitForSelector(".pk-thumb"); await page.locator(".pk-thumb").first().click();
     await page.fill("#img-alt", "Vue du siège"); await page.fill("#img-cred", "Rédaction"); await page.click(".hn-dlg button[type=submit]");
     await page.waitForSelector(".wd-mainimg"); ok(/^\/media\//.test(await page.getAttribute(".wd-mainimg", "src")), "image principale choisie depuis la médiathèque");

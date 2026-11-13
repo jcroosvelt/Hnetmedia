@@ -70,6 +70,11 @@ test.after(async () => {
 });
 
 const db = () => require("../server/db").getDb();
+/** Image principale de test (obligatoire pour soumettre ou publier un article). */
+async function giveImage(id) {
+  const m = (await db().query("INSERT INTO media (url, alt) VALUES ('/media/test-image', 'Image de test') RETURNING id"))[0];
+  await db().query("UPDATE articles SET main_media_id = $2 WHERE id = $1", [id, m.id]);
+}
 
 async function call(method, p, { body, origin = base, headers = {}, cookie, raw } = {}) {
   const h = { ...headers };
@@ -327,6 +332,10 @@ test("admin : rôles et permissions minimales sur les articles", async () => {
   assert.equal(r.status, 400, "auteur manquant");
   await as(chef, "PUT", `/api/admin/articles/${art.id}`, { authorName: "La rédaction" });
   assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/status`, { status: "programme", publishedAt: "2000-01-01T00:00:00Z" })).status, 400, "programmation dans le passé refusée");
+  r = await as(chef, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" });
+  assert.equal(r.status, 400, "image principale obligatoire");
+  assert.ok(/image principale/i.test(r.json.error), "le message demande l'image principale : " + r.json.error);
+  await giveImage(art.id);
   const hooksBefore = hookCalls;
   r = await as(chef, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" });
   assert.equal(r.status, 200, r.text);
@@ -554,6 +563,7 @@ test("programmation : point d'entrée protégé, promotion à l'heure, articles 
   await db().query(`INSERT INTO article_translations (article_id, lang, title, content, reviewed) VALUES
     ('s-ok', 'fr', 'Programmé complet', '<p>Texte</p>', true), ('s-incomplet', 'fr', 'Programmé incomplet', '<p>Texte</p>', true), ('s-futur', 'fr', 'Programmé futur', '<p>Texte</p>', true)`);
 
+  await giveImage("s-ok"); // sans image principale, un article programmé n'est jamais publié
   // sécurité du point d'entrée
   assert.equal((await call("GET", "/api/scheduled", { origin: null })).status, 401, "sans secret");
   assert.equal((await call("GET", "/api/scheduled", { origin: null, headers: bearer("pas-le-bon-secret-pas-le-bon-0000") })).status, 401, "mauvais secret");
@@ -957,6 +967,7 @@ test("push : appareils, déclencheurs, rappels sans doublon, jamais bloquant", a
   const art = (await as(admin, "POST", "/api/admin/articles", { title: "Article push", category: "culture" })).json.article;
   assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Article push", content: "<p>Texte complet.</p>" } }, authorName: "Rédaction" })).status, 200);
   const before = sentTo().length;
+  await giveImage(art.id);
   assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
   const pub = sentTo().slice(before);
   assert.equal(pub.length, 1);
@@ -1008,6 +1019,10 @@ test("push : article à approuver, rappel unique, commentaires prêts mais non b
   const art = (await as(jr, "POST", "/api/admin/articles", { title: "Reportage à valider", category: "culture" })).json.article;
   assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {})).status, 400, "contenu obligatoire avant de soumettre");
   assert.equal((await as(jr, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Reportage à valider", content: "<p>Texte du reportage.</p>" } }, authorName: "Jean Reporter" })).status, 200);
+  const noImg = await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {});
+  assert.equal(noImg.status, 400, "image principale obligatoire pour soumettre");
+  assert.ok(/image principale/i.test(noImg.json.error));
+  await giveImage(art.id);
   const r = await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {});
   assert.equal(r.status, 200, r.text);
   assert.ok(r.json.article.reviewRequestedAt);
@@ -1024,6 +1039,7 @@ test("push : article à approuver, rappel unique, commentaires prêts mais non b
   await db().query("UPDATE articles SET review_requested_at = now() - interval '3 hours' WHERE id = $1", [art.id]);
   assert.equal(await remindReviews(), 1);
   assert.equal(await remindReviews(), 0, "un seul rappel");
+  await giveImage(art.id);
   assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
   assert.equal((await db().query("SELECT review_requested_at FROM articles WHERE id = $1", [art.id]))[0].review_requested_at, null);
 
@@ -1076,6 +1092,7 @@ test("push : retours aux auteurs, traductions, comptes, sécurité, commercial, 
   // retours aux auteurs
   const art = (await as(jr, "POST", "/api/admin/articles", { title: "Enquête de Julie", category: "culture" })).json.article;
   assert.equal((await as(jr, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Enquête de Julie", content: "<p>Texte.</p>" }, en: { title: "Julie's investigation", content: "<p>Text.</p>", reviewed: false } }, authorName: "Julie Journaliste" })).status, 200);
+  await giveImage(art.id);
   assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review`, {})).status, 200);
   assert.ok(got("chef").some((d) => d.title === "Article à approuver"), "rédacteur en chef prévenu");
   assert.equal((await as(jr, "POST", `/api/admin/articles/${art.id}/review-return`, {})).status, 403, "journaliste ne peut pas renvoyer");
@@ -1086,6 +1103,7 @@ test("push : retours aux auteurs, traductions, comptes, sécurité, commercial, 
   assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/review-return`, {})).status, 400, "plus en attente");
 
   // publication par le chef : l'auteur + l'éditeur (traduction) sont prévenus, pas le chef
+  await giveImage(art.id);
   assert.equal((await as(chef, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
   assert.ok(got("jr").some((d) => d.title === "Votre article est publié"), "auteur prévenu de la publication");
   assert.ok(got("ed").some((d) => d.title === "Traduction anglaise à valider"), "éditeur prévenu de la traduction à valider");
@@ -1100,6 +1118,7 @@ test("push : retours aux auteurs, traductions, comptes, sécurité, commercial, 
   const sp = (await as(chef, "POST", "/api/admin/articles", { title: "Contenu sponsorisé", category: "culture" })).json.article;
   assert.equal((await as(chef, "PUT", `/api/admin/articles/${sp.id}`, { translations: { fr: { title: "Contenu sponsorisé", content: "<p>Pub.</p>" } }, authorName: "Rédaction" })).status, 200);
   await db().query("UPDATE articles SET sponsored = true WHERE id = $1", [sp.id]);
+  await giveImage(sp.id);
   assert.equal((await as(chef, "POST", `/api/admin/articles/${sp.id}/status`, { status: "publie" })).status, 200);
   assert.ok(got("com").some((d) => d.title === "Article sponsorisé publié"), "commercial prévenu");
 
@@ -1136,7 +1155,7 @@ test("commentaires : dépôt protégé, pré-modération, réponses, droits, not
     const art = (await as(owner, "POST", "/api/admin/articles", { title, category: "culture" })).json.article;
     assert.equal((await as(owner, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title, content: "<p>Texte de l'article.</p>", ...(extra.en ? {} : {}) }, ...(extra.en ? { en: { title: title + " (EN)", content: "<p>Article text.</p>", reviewed: true } } : {}) }, authorName: "Rédaction" })).status, 200);
     if (extra.en) assert.equal((await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { en: { title: title + " (EN)", content: "<p>Article text.</p>", reviewed: true } } })).status, 200, "traduction anglaise validée par l'administrateur");
-    if (publish) assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+    if (publish) { await giveImage(art.id); assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200); }
     return (await as(admin, "GET", `/api/admin/articles/${art.id}`)).json.article;
   };
   const pubArt = await mk("Article commentable", jr, true, { en: true });
@@ -1253,6 +1272,16 @@ test("commentaires : dépôt protégé, pré-modération, réponses, droits, not
   const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-cm-"));
   execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out, I18N_STRICT: "1" }, stdio: "pipe" });
+  await db().query("INSERT INTO articles (id, slug, status, category_slug, author_name, published_at) VALUES ('legacy-1', 'ancien-sans-image', 'publie', 'culture', 'Rédaction', now() - interval '1 day')");
+  await db().query("INSERT INTO article_translations (article_id, lang, title, content, reviewed) VALUES ('legacy-1', 'fr', 'Ancien article', '<p>Texte</p>', true)");
+  const out2 = fs.mkdtempSync(path.join(os.tmpdir(), "hn-cm2-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out2, I18N_STRICT: "1" }, stdio: "pipe" });
+  const mainOf = (h) => h.slice(h.indexOf("<main"), h.indexOf("</main>"));
+  const withImg = fs.readFileSync(path.join(out2, "article", `${pubArt.slug}.html`), "utf8");
+  assert.ok(withImg.includes('class="art-hero"') && !/logo\.png/.test(mainOf(withImg)), "en-tête : l'image de l'article, jamais le logo du site");
+  assert.ok(withImg.includes('<meta property="og:image" content="https://www.hnetmedia.com/media/test-image">') && withImg.includes('<meta name="twitter:image" content="https://www.hnetmedia.com/media/test-image">'), "aperçu de lien : l'image principale");
+  const legacy = fs.readFileSync(path.join(out2, "article", "ancien-sans-image.html"), "utf8");
+  assert.ok(!legacy.includes("art-hero") && !/logo\.png/.test(mainOf(legacy)) && legacy.includes("art-plain"), "ancien article sans image : ni photo ni logo en haut");
   const frPage = fs.readFileSync(path.join(out, "article", `${pubArt.slug}.html`), "utf8");
   assert.ok(frPage.includes('id="comments"') && frPage.includes(`data-article="${pubArt.slug}"`) && frPage.includes(">Commentaires<") && frPage.includes("/assets/comments.js") && frPage.includes("/assets/comments.css"));
   const enPage = fs.readFileSync(path.join(out, "en", "article", `${pubArt.slug}.html`), "utf8");

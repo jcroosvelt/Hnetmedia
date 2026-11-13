@@ -49,3 +49,11 @@ a.art-author:hover{color:var(--orange)}
   .art-more{padding:0 4px}
 }
 @media (max-width:400px){.art-act-l{font-size:10px}}
+
+/* Article sans image principale (anciens articles) : pas de photo, la feuille commence en haut */
+.art-plain .art-crumbs{display:block;margin:18px 20px 4px}
+.art-plain .art-sheet{margin-top:0;border-radius:0;padding-top:12px}
+@media (min-width:761px){
+  .art-plain .art-crumbs{margin:22px 4px 8px}
+  .art-plain .art-sheet{margin:0 36px;border-radius:24px;box-shadow:0 12px 40px rgba(10,31,68,.12);padding-top:34px}
+}

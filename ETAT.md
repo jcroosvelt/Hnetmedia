@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : l'admin sait créer un brouillon à partir d'un contenu partagé depuis une autre application (partie site ; l'application Android suit).
+> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : image principale obligatoire pour soumettre/publier un article ; plus de logo en haut de la page article ; l'image principale sert d'aperçu des liens.
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -75,6 +75,7 @@
 
 | Date | Modification |
 |---|---|
+| 13 nov. | **Image principale obligatoire** (demande du propriétaire) : impossible de soumettre à l'approbation, de publier ou de programmer un article sans elle (l'éditeur le dit et ouvre le volet ; le serveur refuse aussi ; un article programmé sans image n'est pas publié automatiquement). **Plus de logo en haut de la page article** : l'en-tête est l'image de l'article (sans image, pas d'en-tête : les anciens articles restent publiés tels quels). **Aperçu des liens** (`og:image`, `twitter:image`) = image principale de l'article, avant l'image SEO manuelle |
 | 12 nov. | Admin : réception d'un contenu partagé (`window.onAppShare`) → brouillon (texte, lien, photo) ; nouveau test navigateur `test/browser/share.js` (13 vérifications) |
 | 12 nov. | **Interligne 1,20** sur tout le site (public, admin, éditeur, articles publiés) à la demande du propriétaire : toute valeur supérieure à 1,20 dans `style.css`, `article-body.css`, `article.css`, `comments.css`, `admin.css` et `admin.js` est ramenée à 1,20 ; les titres et pastilles déjà plus serrés (1 à 1,18) sont conservés |
 | 12 nov. | **Page article refaite** (demande du propriétaire, modèle fourni : mise en page seulement, couleurs et polices inchangées) : photo pleine largeur avec retour, feuille blanche aux coins arrondis qui la chevauche, pastille de rubrique, titre Playfair, ligne d'auteur (photo, nom, date, temps de lecture), barre d'actions flottante (commentaires avec compteur réel, WhatsApp, Facebook, X, copier le lien). Aucune donnée inventée (pas de « J'aime », ni de compteur de lectures, ni de « Suivre »). Nouvelle feuille `assets/article.css` ; `style.css` intact |

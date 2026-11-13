@@ -17,7 +17,7 @@ async function promoteDue() {
     WITH due AS (
       UPDATE articles a SET status = 'publie', updated_at = now()
       WHERE a.status = 'programme' AND a.published_at <= now()
-        AND a.category_slug IS NOT NULL
+        AND a.category_slug IS NOT NULL AND a.main_media_id IS NOT NULL
         AND (a.author_id IS NOT NULL OR btrim(COALESCE(a.author_name, '')) <> '')
         AND EXISTS (SELECT 1 FROM article_translations t
                     WHERE t.article_id = a.id AND t.lang = a.original_lang AND btrim(t.title) <> '' AND btrim(t.content) <> '')
@@ -85,7 +85,7 @@ async function warnBlocked() {
     UPDATE articles SET review_reminded_at = now()
     WHERE status = 'programme' AND published_at <= now() AND review_reminded_at IS NULL RETURNING id, slug`);
   for (const r of rows) {
-    await push.notify({ permission: "article.publish", channel: "publication", title: "Article programmé bloqué", body: `« ${r.slug} » est incomplet (rubrique, signature ou texte) et n'a pas pu être publié.`, url: `/admin#/articles/${r.id}` });
+    await push.notify({ permission: "article.publish", channel: "publication", title: "Article programmé bloqué", body: `« ${r.slug} » est incomplet (rubrique, signature, texte ou image principale) et n'a pas pu être publié.`, url: `/admin#/articles/${r.id}` });
   }
   return rows.length;
 }

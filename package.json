@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
-    "sanitize-html": "2.13.1"
+    "sanitize-html": "2.18.2"
   },
   "engines": {
     "node": "22.x"

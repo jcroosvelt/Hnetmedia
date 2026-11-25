@@ -1,5 +1,6 @@
 # HNet Media — où en est-on ?
 
+> **Branche `security-hardening` (audit de sécurité du 25 nov. 2026) : EN ATTENTE DE FUSION dans `main`** — voir § 8.
 > **Dernière mise à jour : 12 novembre 2026** · Dernier changement : images du texte réglables (taille, position, déplacement) ; ajout d'images de tout format jusqu'à 20 Mo.
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
@@ -75,6 +76,7 @@
 
 | Date | Modification |
 |---|---|
+| 25 nov. | **Audit de sécurité** (demande du propriétaire) : correctifs sur la branche `security-hardening` (non fusionnée, déploiement en attente d'accord) — CSP publique, injection CSS, assainissement renforcé, journal de sécurité, `/api/health` réduit, détecteur de secrets, Dependabot ; voir § 8 |
 | 13 nov. | **Images du texte réglables** (onglet « Image » du ruban, qui s'ouvre quand on touche une image) : taille Petite (⅓) / Moyenne (½) / Grande (¾) / Pleine largeur ; position À gauche / Centrée / À droite (le texte entoure l'image sur ordinateur) ; Monter / Descendre d'un bloc (glisser-déposer possible à la souris) ; Modifier ; Supprimer. Classes `fig-s/m/l`, `fig-left/right` acceptées par le serveur, toute autre classe retirée. Sur téléphone les images sont un peu plus larges et ne flottent pas. **Ajout d'images de tout format jusqu'à 20 Mo** : JPEG, PNG, WebP, GIF, BMP, AVIF (et HEIC si l'appareil sait le lire) ; l'appareil réduit à 1 600 px et ré-encode en WebP/JPEG léger (< 1,9 Mo) ; plusieurs méthodes de lecture, dont une pour les WebView Android anciens qui échouaient (« impossible de lire cette image ») ; SVG refusé (sécurité) ; messages d'erreur précis |
 | 13 nov. | **Image principale obligatoire** (demande du propriétaire) : impossible de soumettre à l'approbation, de publier ou de programmer un article sans elle (l'éditeur le dit et ouvre le volet ; le serveur refuse aussi ; un article programmé sans image n'est pas publié automatiquement). **Plus de logo en haut de la page article** : l'en-tête est l'image de l'article (sans image, pas d'en-tête : les anciens articles restent publiés tels quels). **Aperçu des liens** (`og:image`, `twitter:image`) = image principale de l'article, avant l'image SEO manuelle |
 | 12 nov. | Admin : réception d'un contenu partagé (`window.onAppShare`) → brouillon (texte, lien, photo) ; nouveau test navigateur `test/browser/share.js` (13 vérifications) |
@@ -98,3 +100,10 @@
 | 7 nov. | Publication programmée, pagination des rubriques, `SITE_URL` |
 | 6 nov. | Téléversement d'images, éditeur façon Word, contact réel, Resend, le site se construit depuis Neon |
 | 5 nov. | Base Neon, espace `/admin`, sécurité, fonctions serveur |
+
+## 8. Sécurité (audit du 25 nov. 2026 — branches `security-hardening` et `security-sanitize-upgrade`, non fusionnées)
+
+- **Fait sur `security-hardening`** : CSP + anti-clickjacking sur le site public (l'admin garde la sienne) ; plus aucun gestionnaire `onclick` ; adresse d'image encodée dans le CSS (injection CSS fermée) ; assainissement du HTML renforcé (pré-filtre, `nonTextTags` étendu, double passage) ; journal de sécurité (`server/seclog.js`, lignes `[sécu]` dans Vercel › Logs, sans secret ni IP en clair) ; `/api/health` public réduit à `ok` + `database` (le détail exige `Authorization: Bearer <CRON_SECRET>`) ; limite sur le changement de mot de passe ; IP lue dans `x-vercel-forwarded-for` ; `security.txt` ; détecteur de secrets (`npm run security:scan`, hook `.githooks/pre-commit`, workflow `.github/workflows/security.yml`) ; Dependabot ; `@neondatabase/serverless` 1.2.1. 29 tests API + toutes les suites navigateur passent ; la CSP a été vérifiée en vrai navigateur sur 9 pages.
+- **`security-sanitize-upgrade`** : `sanitize-html` 2.18.2 (corrige 5 avis ; 2.13.1 en a). Testé en local ; **à vérifier sur l'aperçu Vercel avant fusion** (le module ESM `htmlparser2` 12 avait planté `/admin` sur Vercel) : `GET /api/admin/auth/session` doit répondre 401 JSON, pas 500.
+- **À faire par le propriétaire** : voir le rapport de sécurité (rôle Neon à privilèges minimaux, restriction de la clé Firebase, 2FA des comptes, clé de signature de production, facturation GitHub Actions).
+

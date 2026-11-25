@@ -1,0 +1,3 @@
+#!/bin/sh
+# Bloque un commit qui contient un secret probable. Activation (une fois par clone) : git config core.hooksPath .githooks
+node scripts/scan-secrets.js --staged

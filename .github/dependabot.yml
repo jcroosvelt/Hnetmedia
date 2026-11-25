@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      tiptap:
+        patterns: ["@tiptap/*"]
+    ignore:
+      # sanitize-html ≥ 2.14 dépend d'un module ESM seul (htmlparser2 12) qui a fait planter l'admin sur Vercel :
+      # à monter UNIQUEMENT en vérifiant /admin sur l'aperçu de déploiement (voir ETAT.md › Sécurité).
+      - dependency-name: "sanitize-html"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -9,8 +9,10 @@ function hashSecret() {
   return s;
 }
 
-/** IP du client (derrière le proxy Vercel). Jamais stockée en clair. */
+/** IP du client (derrière le proxy Vercel : x-vercel-forwarded-for est posé par la plateforme). Jamais stockée en clair. */
 function clientIp(req) {
+  const vercel = String(req.headers["x-vercel-forwarded-for"] || "").split(",")[0].trim();
+  if (vercel) return vercel;
   const xff = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
   return xff || String(req.headers["x-real-ip"] || "") || (req.socket && req.socket.remoteAddress) || "inconnue";
 }
@@ -44,7 +46,10 @@ function checkOrigin(req, { required = true } = {}) {
   const served = String(req.headers["x-forwarded-host"] || req.headers.host || "");
   const allowed = new Set([served]);
   if (process.env.SITE_URL) { try { allowed.add(new URL(process.env.SITE_URL).host); } catch { /* ignoré */ } }
-  if (!allowed.has(host)) throw new HttpError(403, "Origine non autorisée.");
+  if (!allowed.has(host)) {
+    require("./seclog").secLog("origine.refusee", req, { origine: host });
+    throw new HttpError(403, "Origine non autorisée.");
+  }
 }
 
 module.exports = { clientIp, fingerprint, randomToken, sha256, safeEqual, checkOrigin };

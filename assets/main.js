@@ -95,6 +95,12 @@
     if (map[platform]) window.open(map[platform], "_blank", "noopener,width=600,height=500");
   };
 
+  // Boutons de partage (data-share) : pas de gestionnaire inline, pour pouvoir interdire les scripts inline (CSP).
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-share]");
+    if (b) window.shareArticle(b.getAttribute("data-share"));
+  });
+
   /* ── REDIRECTION DES ANCIENNES URLS EN #/route (ex-SPA) ──
      Conserve les anciens liens/favoris fonctionnels (règle #44). */
   (function legacyHashRedirect() {

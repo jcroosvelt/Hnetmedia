@@ -389,7 +389,11 @@ test("admin : abonnés, export CSV et statistiques", async () => {
 test("health : état minimal, sans fuite", async () => {
   const r = await call("GET", "/api/health");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json, { ok: true, database: true, hashSecret: true, deployHook: true, push: false, siteUrl: "https://www.hnetmedia.com" }, "le test configure un faux Deploy Hook et une adresse de site ; pas de clé Firebase");
+  assert.deepEqual(r.json, { ok: true, database: true }, "public : seulement « ok » et « database » (aucun détail de configuration)");
+  const bad = await call("GET", "/api/health", { headers: { authorization: "Bearer pas-le-bon-secret-pas-le-bon-0000" } });
+  assert.deepEqual(bad.json, { ok: true, database: true }, "mauvais secret : toujours aucun détail");
+  const det = await call("GET", "/api/health", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
+  assert.deepEqual(det.json, { ok: true, database: true, hashSecret: true, deployHook: true, push: false, siteUrl: "https://www.hnetmedia.com" }, "avec le secret du cron : le détail (oui/non, jamais les valeurs)");
   assert.ok(!r.text.includes("postgres"), "aucune chaîne de connexion exposée");
   assert.equal((await call("POST", "/api/health")).status, 405);
 });
@@ -1301,4 +1305,106 @@ test("images du texte : classes de taille/position conservées, toute autre clas
   assert.ok(/<figure class="fig-l">/.test(saved));
   assert.ok(/<figure class="fig-right">/.test(saved) && !/fig-xxl/.test(saved), "classe inconnue retirée");
   assert.ok(!/evil|onclick|onerror|position:fixed/.test(saved), "aucune classe ni attribut dangereux conservé");
+});
+
+
+/* ═════════════════════════ AUDIT DE SÉCURITÉ : ASSAINISSEMENT, CSS, JOURNAL, EN-TÊTES ═════════════════════════ */
+test("sécurité : le HTML d'article résiste aux contournements connus (mutation, noscript, textarea, SVG…)", () => {
+  const { cleanHtml } = require("../server/sanitize");
+  const payloads = [
+    '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+    '<textarea></textarea/><img src=x onerror=alert(1)>',
+    '<svg><animate attributeName=href values=javascript:alert(1) /><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>',
+    '<math><mi xlink:href="javascript:alert(1)">x</mi></math>',
+    '<iframe src="javascript:alert(1)"></iframe>',
+    '<meta http-equiv="refresh" content="0;url=javascript:alert(1)">',
+    '<style>@import "https://evil.example/x.css";</style><p>t</p>',
+    '<a href="javascript:alert(1)">clic</a><a href=" jav&#x61;script:alert(1)">clic2</a><a href="data:text/html;base64,PHNjcmlwdD4=">d</a>',
+    '<img src="x" onerror="alert(1)"><img src="javascript:alert(1)"><img src="data:image/svg+xml;base64,PHN2Zz4=">',
+    '<p onclick="alert(1)" style="background:url(javascript:alert(1));position:fixed">t</p>',
+    '<form action="https://evil.example"><input name=x><button formaction="javascript:alert(1)">ok</button></form>',
+    '<template><img src=x onerror=alert(1)></template><xmp><img src=x onerror=alert(1)></xmp><plaintext><img src=x onerror=alert(1)>',
+    '<scr<script>ipt>alert(1)</scr</script>ipt>',
+    '<object data="javascript:alert(1)"></object><embed src="javascript:alert(1)">',
+  ];
+  for (const p of payloads) {
+    const out = cleanHtml(p);
+    assert.ok(!/onerror|onclick|javascript:|<script|<svg|<math|<noscript|<textarea|<iframe|<style|<meta|<form|<input|<button|<template|<xmp|<plaintext|<object|<embed|position:\s*fixed|data:/i.test(out), `charge neutralisée : ${p.slice(0, 50)}… → ${out}`);
+    assert.equal(cleanHtml(out), out, "résultat stable (un second nettoyage ne change rien)");
+  }
+  assert.equal(cleanHtml('<p>Texte <strong>gras</strong> et <a href="https://exemple.org/a">lien</a></p>'), '<p>Texte <strong>gras</strong> et <a href="https://exemple.org/a" rel="noopener noreferrer nofollow" target="_blank">lien</a></p>', "contenu légitime conservé");
+});
+
+test("sécurité : une adresse d'image piégée ne peut pas injecter de CSS dans la page article", async () => {
+  const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+  const admin = await loginAs("admin@hnetmedia.com", "un mot de passe solide 2026", 310);
+  const art = (await as(admin, "POST", "/api/admin/articles", { title: "Image piégée", category: "culture" })).json.article;
+  const evil = "https://img.example/a.jpg');background:url('https://evil.example/pixel.gif";
+  let r = await as(admin, "PUT", `/api/admin/articles/${art.id}`, { translations: { fr: { title: "Image piégée", content: "<p>Texte</p>" } }, authorName: "Rédaction", mainImage: { url: evil, alt: "Test" } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal((await as(admin, "POST", `/api/admin/articles/${art.id}/status`, { status: "publie" })).status, 200);
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-sec-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out }, stdio: "pipe" });
+  const html = fs.readFileSync(path.join(out, "article", `${art.slug || r.json.article.slug}.html`), "utf8");
+  const hero = /class="art-hero"[^>]*style="([^"]*)"/.exec(html);
+  assert.ok(hero, "en-tête présent");
+  assert.ok(!/'\)\s*;|\bbackground:url\('https:\/\/evil/.test(hero[1]) && /%27%29/.test(hero[1]), "guillemets et parenthèses encodés : " + hero[1]);
+  assert.equal((hero[1].match(/url\(/g) || []).length, 1, "une seule url() dans le style");
+});
+
+test("sécurité : le journal de sécurité ne contient ni mot de passe, ni e-mail, ni IP en clair", async () => {
+  const lines = [], orig = console.warn;
+  console.warn = (...a) => { lines.push(a.join(" ")); };
+  try {
+    await call("POST", "/api/admin/auth/login", { body: { email: "inconnu-audit@example.org", password: "Un-mot-de-passe-secret-42" }, headers: ip(77) });
+    await call("POST", "/api/admin/auth/login", { body: { email: "admin@hnetmedia.com", password: "Mauvais-mot-de-passe-secret-43" }, headers: ip(77) });
+    await call("POST", "/api/contact", { body: { name: "X", email: "x@example.org", category: "Rédaction", message: "Un message assez long.", hp: "", ts: formTs() }, origin: "https://evil.example", headers: ip(77) });
+  } finally { console.warn = orig; }
+  const sec = lines.filter((l) => l.startsWith("[sécu]"));
+  assert.ok(sec.some((l) => /login\.echec/.test(l) && /compte_inconnu/.test(l)), "échec sur compte inconnu journalisé");
+  assert.ok(sec.some((l) => /login\.echec/.test(l) && /mot_de_passe/.test(l)), "échec de mot de passe journalisé");
+  assert.ok(sec.some((l) => /origine\.refusee/.test(l)), "origine étrangère journalisée");
+  const all = sec.join("\n");
+  assert.ok(!/secret-4[23]|inconnu-audit|admin@hnetmedia|x@example\.org|10\.0\.0\.77/.test(all), "aucun secret ni donnée personnelle dans le journal : " + all.slice(0, 200));
+});
+
+test("sécurité : en-têtes de la page publique (CSP, anti-clickjacking) et de l'admin", () => {
+  const cfg = JSON.parse(require("node:fs").readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+  const rule = (src) => cfg.headers.find((h) => h.source === src);
+  const header = (src, key) => ((rule(src) || { headers: [] }).headers.find((x) => x.key === key) || {}).value || "";
+  const pub = "/((?!admin(?:/|$)).*)";
+  const csp = header(pub, "Content-Security-Policy");
+  assert.ok(/script-src 'self'(;|$)/.test(csp) && !/script-src[^;]*unsafe/.test(csp), "public : aucun script inline ni eval");
+  for (const d of ["object-src 'none'", "base-uri 'self'", "frame-ancestors 'self'", "form-action 'self'", "default-src 'self'"]) assert.ok(csp.includes(d), "public : " + d);
+  assert.equal(header(pub, "X-Frame-Options"), "SAMEORIGIN");
+  assert.ok(/frame-ancestors 'none'/.test(header("/admin(.*)", "Content-Security-Policy")) && header("/admin(.*)", "X-Frame-Options") === "DENY", "admin : plus strict (aucun cadre)");
+  assert.ok(/max-age=\d{7,}/.test(header("/(.*)", "Strict-Transport-Security")), "HSTS");
+  // aucun gestionnaire inline ni script inline dans le HTML généré : la CSP ne casse rien
+  const fs = require("node:fs"), os = require("node:os");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "hn-csp-"));
+  execFileSync("node", ["build.js"], { cwd: ROOT, env: { ...process.env, BUILD_OUT: out }, stdio: "pipe" });
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith(".html") ? [path.join(d, e.name)] : []));
+  for (const f of walk(out)) {
+    const h = fs.readFileSync(f, "utf8");
+    assert.ok(!/\son(?:click|load|error|submit|change|focus|blur|key\w*|mouse\w*|input)\s*=/i.test(h), "gestionnaire inline interdit par la CSP : " + path.relative(out, f));
+    assert.ok(!/<script(?![^>]*\bsrc=)(?![^>]*application\/ld\+json)[^>]*>/i.test(h), "script inline interdit par la CSP : " + path.relative(out, f));
+    assert.ok(!/javascript:/i.test(h), "javascript: interdit : " + path.relative(out, f));
+  }
+  assert.ok(fs.existsSync(path.join(out, ".well-known", "security.txt")) && /^Contact: https:\/\//m.test(fs.readFileSync(path.join(out, ".well-known", "security.txt"), "utf8")), "security.txt publié");
+});
+
+test("sécurité : le détecteur de secrets repère une clé et ignore le reste", () => {
+  const fs = require("node:fs"), os = require("node:os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hn-scan-"));
+  const run = (cwd) => { try { return { code: 0, out: execFileSync("node", [path.join(ROOT, "scripts", "scan-secrets.js")], { cwd, encoding: "utf8", stdio: "pipe" }) }; } catch (e) { return { code: e.status, out: String(e.stderr) + String(e.stdout) }; } };
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, "ok.js"), "const x = 1;\n");
+  execFileSync("git", ["add", "."], { cwd: dir });
+  assert.equal(run(dir).code, 0, "dépôt propre : code 0");
+  fs.writeFileSync(path.join(dir, "fuite.js"), "const k = \"" + "sk_live_" + "A1b2C3d4E5f6G7h8I9j0" + "\";\nconst db = \"" + "postgres://app:" + "Mot2Passe123@db.example.org/x" + "\";\n");
+  execFileSync("git", ["add", "."], { cwd: dir });
+  const r = run(dir);
+  assert.equal(r.code, 1, "secret détecté : code 1");
+  assert.ok(/clé Stripe/.test(r.out) && /chaîne de connexion/.test(r.out), "les deux secrets sont signalés");
+  assert.ok(!/A1b2C3d4E5f6G7h8I9j0|Mot2Passe123/.test(r.out), "valeurs masquées dans l'affichage");
 });

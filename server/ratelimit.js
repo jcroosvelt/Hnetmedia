@@ -25,7 +25,10 @@ async function hit(key, windowSeconds) {
 /** Lève une erreur 429 si la limite est dépassée. */
 async function limit(key, max, windowSeconds, message = "Trop de tentatives. Réessayez plus tard.") {
   const n = await hit(key, windowSeconds);
-  if (n > max) throw new HttpError(429, message);
+  if (n > max) {
+    require("./seclog").secLog("limite.depassee", null, { cle: String(key).split(":").slice(0, 2).join(":").replace(/[0-9a-f]{16,}/g, "…") });
+    throw new HttpError(429, message);
+  }
   return n;
 }
 

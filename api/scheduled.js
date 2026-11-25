@@ -16,7 +16,7 @@ module.exports = handler(["GET", "POST"], async (req, res) => {
   if (!secret || secret.length < 24) throw new HttpError(503, "Publication programmée non configurée (CRON_SECRET absente ou trop courte).");
   await limit(`cron:${fingerprint(clientIp(req))}`, 60, 3600, "Trop de tentatives.");
   const given = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!given || !safeEqual(given, secret)) throw new HttpError(401, "Non autorisé.");
+  if (!given || !safeEqual(given, secret)) { require("../server/seclog").secLog("cron.refuse", req); throw new HttpError(401, "Non autorisé."); }
   const r = await scheduled.run();
   send(res, 200, { ok: true, promoted: r.promoted.length, slugs: r.promoted, blocked: r.blocked, rebuild: r.rebuild, reminded: r.reminded });
 });

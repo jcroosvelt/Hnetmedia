@@ -36,7 +36,25 @@ const OPTIONS = {
   },
 };
 
-const cleanHtml = (html) => sanitizeHtml(String(html || ""), OPTIONS);
+// Défense en profondeur (avis de sécurité sur sanitize-html ≤ 2.17.7, version 2.13.1 épinglée : voir ETAT.md) :
+//  1. avant nettoyage, on retire (avec leur contenu) les balises à « contenu brut » ou à risque de mutation ;
+//  2. nonTextTags étendu : le contenu de ces balises est supprimé, jamais restitué ;
+//  3. le résultat est re-nettoyé jusqu'à stabilité : une mutation produite au premier passage est neutralisée au second.
+// L'éditeur n'émet jamais ces balises : aucun contenu légitime n'est perdu. La CSP (script-src 'self') ferme le reste.
+const RISKY = "textarea|noscript|svg|math|template|xmp|plaintext|iframe|object|embed|style|script|title|select|option|form|input|button|frameset|frame|meta|link|base";
+const RISKY_BLOCK = new RegExp(`<\\s*(${RISKY})\\b[\\s\\S]*?(?:<\\s*/\\s*\\1[^>]*>|$)`, "gi");
+const RISKY_CLOSE = new RegExp(`<\\s*/\\s*(?:${RISKY})[^>]*>`, "gi");
+OPTIONS.nonTextTags = ["style", "script", "textarea", "option", "noscript", "template", "xmp", "plaintext", "title"];
+
+function cleanHtml(html) {
+  let out = String(html || "").replace(RISKY_BLOCK, "").replace(RISKY_CLOSE, "");
+  for (let i = 0; i < 3; i++) {
+    const next = sanitizeHtml(out, OPTIONS);
+    if (next === out) return next;
+    out = next;
+  }
+  return out;
+}
 // Texte brut : balises retirées, puis entités décodées. On stocke « Éducation & santé »,
 // jamais « Éducation &amp; santé » (sinon l'éditeur l'affiche tel quel et chaque
 // enregistrement l'échappe un peu plus). L'échappement se fait à l'affichage.

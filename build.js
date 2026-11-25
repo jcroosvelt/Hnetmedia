@@ -46,6 +46,11 @@ function copyDir(src, dest) {
     else fs.copyFileSync(s, d);
   }
 }
+/** URL à placer dans `url('…')` d'un attribut style : on encode tout caractère qui pourrait refermer la valeur CSS
+ *  (guillemets, parenthèses, antislash, espaces) — sans cela une adresse d'image piégée injecterait du CSS. */
+function cssUrl(u) {
+  return String(u || "").replace(/[\s'"()\\<>]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
+}
 function escAttr(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -305,7 +310,7 @@ function articleBadges(a) {
 // Fond d'une vignette : image de l'article, sinon le logo sur le bleu marine du site (jamais d'arc-en-ciel de rubriques).
 function coverStyle(a) {
   return a.mainImage && a.mainImage.url
-    ? `background:url('${escAttr(a.mainImage.url)}') center/cover`
+    ? `background:url('${escAttr(cssUrl(a.mainImage.url))}') center/cover`
     : "background:var(--navy) url('/assets/logo.png') center/44% no-repeat";
 }
 
@@ -547,7 +552,7 @@ function buildArticlePages() {
 
     // En-tête de l'article : sa propre image principale uniquement (jamais le logo du site). Sans image (anciens articles), pas d'en-tête.
     const hasHero = Boolean(a.mainImage && a.mainImage.url);
-    const heroBg = hasHero ? `url('${escAttr(a.mainImage.url)}') center/cover` : "";
+    const heroBg = hasHero ? `url('${escAttr(cssUrl(a.mainImage.url))}') center/cover` : "";
 
     const sourcesHtml = (a.sources && a.sources.length)
       ? `<div class="sources-block"><h3>${T("Sources")}</h3><ul>${a.sources.map((s) => `<li><a href="${escAttr(s.url)}" target="_blank" rel="noopener nofollow">${escAttr(s.name)}</a>${s.description ? " — " + escAttr(s.description) : ""}</li>`).join("")}</ul></div>`
@@ -635,10 +640,10 @@ function buildArticlePages() {
 
         <div class="art-actions" role="group" aria-label="${T("Partager l'article")}">
           <a class="art-act" href="#comments"><span class="art-ic">${ICON.comment}<b class="art-count" data-cm-count hidden></b></span><span class="art-act-l">${T("Commentaires")}</span></a>
-          <button type="button" class="art-act" onclick="shareArticle('whatsapp')" aria-label="WhatsApp">${ICON.whatsapp}<span class="art-act-l">WhatsApp</span></button>
-          <button type="button" class="art-act" onclick="shareArticle('facebook')" aria-label="Facebook">${ICON.facebook}<span class="art-act-l">Facebook</span></button>
-          <button type="button" class="art-act" onclick="shareArticle('twitter')" aria-label="${T("Partager sur X")}">${ICON.x}<span class="art-act-l">X</span></button>
-          <button type="button" class="art-act" onclick="shareArticle('copy')" aria-label="${T("Copier le lien")}">${ICON.link}<span class="art-act-l" id="copyLinkBtn">${T("Copier le lien")}</span></button>
+          <button type="button" class="art-act" data-share="whatsapp" aria-label="WhatsApp">${ICON.whatsapp}<span class="art-act-l">WhatsApp</span></button>
+          <button type="button" class="art-act" data-share="facebook" aria-label="Facebook">${ICON.facebook}<span class="art-act-l">Facebook</span></button>
+          <button type="button" class="art-act" data-share="twitter" aria-label="${T("Partager sur X")}">${ICON.x}<span class="art-act-l">X</span></button>
+          <button type="button" class="art-act" data-share="copy" aria-label="${T("Copier le lien")}">${ICON.link}<span class="art-act-l" id="copyLinkBtn">${T("Copier le lien")}</span></button>
         </div>
 
         ${navHtml}
@@ -956,6 +961,12 @@ Allow: /
 Disallow: /admin
 
 Sitemap: ${BASE_URL}/sitemap.xml
+`);
+  // Où signaler une faille (RFC 9116) : la page Contact du site ; revalidé à chaque déploiement.
+  writeFile(".well-known/security.txt", `Contact: ${BASE_URL}/contact
+Expires: ${new Date(Date.now() + 364 * 24 * 3600 * 1000).toISOString()}
+Preferred-Languages: fr, en
+Canonical: ${BASE_URL}/.well-known/security.txt
 `);
 }
 

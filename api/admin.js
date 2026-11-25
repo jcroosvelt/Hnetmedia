@@ -68,7 +68,7 @@ async function setup(req, res) {
   if (!expected || expected.length < 24) throw new HttpError(404, "Introuvable.");
   await limit(`setup:${fingerprint(clientIp(req))}`, 5, 3600);
   const body = await readBody(req);
-  if (!body.setupToken || !safeEqual(body.setupToken, expected)) throw new HttpError(403, "Code d'installation invalide.");
+  if (!body.setupToken || !safeEqual(body.setupToken, expected)) { require("../server/seclog").secLog("installation.refusee", req); throw new HttpError(403, "Code d'installation invalide."); }
   const email = v.email(body, "email");
   const name = v.str(body, "name", { min: 2, max: 100, label: "Nom" });
   const hash = await auth.hashPassword(auth.checkPasswordPolicy(body.password));
@@ -109,6 +109,7 @@ async function session(req, res) {
 
 async function changePassword(req, res) {
   const s = await auth.requireAuth(req);
+  await limit(`pwchange:${s.user.id}`, 5, 900, "Trop d'essais. Réessayez dans 15 minutes."); // une session volée ne peut pas deviner le mot de passe actuel
   const body = await readBody(req);
   const row = (await getDb().query("SELECT password_hash FROM users WHERE id = $1", [s.user.id]))[0];
   if (!(await auth.verifyPassword(String(body.current || ""), row.password_hash))) throw new HttpError(400, "Mot de passe actuel incorrect.", { field: "current" });

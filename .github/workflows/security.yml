@@ -1,0 +1,30 @@
+name: Sécurité
+
+# Détection de secrets (arbre + historique) et audit des dépendances de production.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"   # chaque lundi
+
+permissions:
+  contents: read
+
+jobs:
+  securite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Secrets dans le code et l'historique
+        run: node scripts/scan-secrets.js --history
+      - name: Audit des dépendances de production (échec dès « élevée »)
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          npm audit --omit=dev --audit-level=high

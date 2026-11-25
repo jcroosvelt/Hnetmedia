@@ -14,6 +14,7 @@ const { getDb } = require("./db");
 const { HttpError, parseCookies } = require("./http");
 const { randomToken, sha256, safeEqual, checkOrigin, clientIp, fingerprint } = require("./security");
 const { limit } = require("./ratelimit");
+const { secLog } = require("./seclog");
 
 const COOKIE = "__Host-hnet_session";
 const SESSION_HOURS = 8;
@@ -78,9 +79,10 @@ async function login(req, email, password) {
   const u = rows[0];
   const generic = new HttpError(401, "Identifiants incorrects.");
 
-  if (!u || !u.password_hash) { await verifyPassword(password, await getDummyHash()); throw generic; }
+  if (!u || !u.password_hash) { await verifyPassword(password, await getDummyHash()); secLog("login.echec", req, { raison: "compte_inconnu", compte: fingerprint(email) }); throw generic; }
   if (u.locked_until && new Date(u.locked_until) > new Date()) {
     await verifyPassword(password, await getDummyHash());
+    secLog("login.refuse", req, { raison: "compte_verrouille", uid: String(u.id) });
     throw new HttpError(423, `Compte temporairement verrouillé après plusieurs échecs. Réessayez dans ${LOCK_MINUTES} minutes.`);
   }
   const ok = await verifyPassword(password, u.password_hash);
@@ -95,6 +97,9 @@ async function login(req, email, password) {
         await require("./push").notify({ permission: "user.manage", channel: "messages", title: "Compte verrouillé", body: `${u.display_name} : ${MAX_FAILS} échecs de connexion`, url: "/admin#/comptes" });
       }
       await audit(u.id, "login.echec", "user", u.id);
+      secLog("login.echec", req, { raison: "mot_de_passe", uid: String(u.id), echecs: upd[0] ? upd[0].failed_logins : null });
+    } else {
+      secLog("login.refuse", req, { raison: "compte_desactive", uid: String(u.id) });
     }
     throw generic;
   }
@@ -154,9 +159,12 @@ async function requireAuth(req, permission) {
   if (!["GET", "HEAD"].includes(req.method)) {
     checkOrigin(req);
     const sent = req.headers["x-csrf-token"];
-    if (!sent || !safeEqual(sent, s.csrf)) throw new HttpError(403, "Jeton de sécurité invalide. Rechargez la page.");
+    if (!sent || !safeEqual(sent, s.csrf)) { secLog("csrf.refuse", req, { uid: String(s.user.id) }); throw new HttpError(403, "Jeton de sécurité invalide. Rechargez la page."); }
   }
-  if (permission && !s.perms.has(permission)) throw new HttpError(403, "Vous n'avez pas les droits pour cette action.");
+  if (permission && !s.perms.has(permission)) {
+    secLog("acces.refuse", req, { uid: String(s.user.id), role: s.user.role, permission });
+    throw new HttpError(403, "Vous n'avez pas les droits pour cette action.");
+  }
   return s;
 }
 

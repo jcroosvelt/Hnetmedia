@@ -29,7 +29,7 @@ async function loadContent() {
     db.query(`SELECT a.id, a.slug, a.status::text AS status, a.type, a.sponsored, a.featured, a.urgent, a.recommended,
                      a.category_slug AS category, a.subcategory, a.author_id AS "authorId", a.author_name AS "authorName",
                      a.original_lang::text AS "originalLang", a.reading_time AS "readingTime", a.published_at AS "publishedAt",
-                     m.url AS img_url, m.alt AS img_alt, m.caption AS img_caption, m.credit AS img_credit
+                     m.url AS img_url, m.mime_type AS img_mime, m.size_bytes AS img_size, m.width AS img_w, m.height AS img_h, m.alt AS img_alt, m.caption AS img_caption, m.credit AS img_credit
               FROM articles a
               LEFT JOIN media m ON m.id = a.main_media_id
               WHERE ${PUBLISHED}
@@ -91,7 +91,7 @@ async function loadContent() {
       excerpt: o.excerpt, authorId: a.authorId, authorName: a.authorName, publishedAt: iso(a.publishedAt),
       readingTime: a.readingTime, content: o.content, originalLang: a.originalLang, tr,
       updatedAt: cor.length ? cor[cor.length - 1].date : null, // « mis à jour » = dernière correction publique
-      mainImage: a.img_url ? { url: a.img_url, alt: a.img_alt || "", caption: a.img_caption || "", credit: a.img_credit || "" } : { url: "", alt: "", caption: "", credit: "" },
+      mainImage: a.img_url ? { url: a.img_url, mime: a.img_mime || "", size: Number(a.img_size) || 0, width: a.img_w || 0, height: a.img_h || 0, alt: a.img_alt || "", caption: a.img_caption || "", credit: a.img_credit || "" } : { url: "", alt: "", caption: "", credit: "" },
       tags: (tagsBy.get(a.id) || []).map((t) => t.label),
       sources: (srcBy.get(a.id) || []).map((s) => ({ name: s.name, url: s.url || "", description: s.description || "" })),
       corrections: cor,

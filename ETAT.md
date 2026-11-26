@@ -1,6 +1,6 @@
 # HNet Media — où en est-on ?
 
-> **Dernière mise à jour : 12 novembre 2026** · Dernier changement : images du texte réglables (taille, position, déplacement) ; ajout d'images de tout format jusqu'à 20 Mo.
+> **Dernière mise à jour : 26 novembre 2026** · Dernier changement : SEO et aperçus de liens (WhatsApp, Facebook, X, Telegram, LinkedIn) centralisés ; liens Android vérifiés (assetlinks.json).
 > Ce fichier est mis à jour **après chaque modification** (règle du propriétaire, 11 nov. 2026).
 > Site en ligne : https://hnetmedia.vercel.app · Espace rédaction : `/admin` · Version anglaise : `/en`
 
@@ -67,11 +67,13 @@
 
 ## 6. Qualité
 
-- Tests automatiques : **23 tests API** (dont push) ; vérifications navigateur (`e2e`, `roles`, `catalog`, `search`, `contact`, `pagination`) toutes passées et **324 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
+- Tests automatiques : **23 tests API** (dont push) ; vérifications navigateur (`e2e`, `roles`, `catalog`, `search`, `contact`, `pagination`) toutes passées (+ `seo` : 23 vérifications du HTML généré) et **347 vérifications navigateur** (ordinateur + mobile), tous passés au dernier changement
 - La construction du site échoue si une phrase de l'interface n'a pas de traduction anglaise
 - Base de production : migrations **0001 à 0010** appliquées ; branches de secours Neon conservées avant les migrations 0006 et 0007
 
 ## 7. Journal des modifications (le plus récent en haut)
+
+- **26 nov. 2026 — SEO et aperçus de liens.** `seoMeta()` (build.js) centralise robots, canonical, hreflang, Open Graph (type `article` + `article:*`, image : adresse https absolue, type, largeur/hauteur, texte alternatif) et carte X, dans le HTML initial. Rubriques/auteurs/tags vides et recherche : `noindex` et hors plan du site ; plan du site avec images ; `robots.txt` (admin et API bloqués, `/media/` et `/assets/` autorisés) ; RSS enrichi ; partage = adresse canonique + bouton « Partager » natif + Telegram ; envoi d'image : JPEG pour les photos opaques (compatible WhatsApp/LinkedIn), WebP seulement si transparence ; `/.well-known/assetlinks.json` (paquet `com.hnetmedia.hnet_admin`, empreinte SHA-256 de `signing/debug.keystore`). Test : `test/browser/seo.js`. **Limites** : les images déjà téléversées restent en WebP ; pas d'image d'aperçu générée par article (l'image principale obligatoire sert d'aperçu) ; aperçus non testés sur les vrais réseaux. App : branche `seo-links` du dépôt de l'app (non compilée, GitHub Actions bloqué).
 
 | Date | Modification |
 |---|---|

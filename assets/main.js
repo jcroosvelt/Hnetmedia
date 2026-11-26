@@ -78,22 +78,41 @@
   }
 
   /* ── PARTAGE SOCIAL (URL réelle de la page) ── */
+  // Adresse partagée = adresse canonique de la page (sans paramètres de suivi, ni ancre), jamais l'adresse brute du navigateur.
+  function shareUrl() {
+    var c = document.querySelector('link[rel="canonical"]');
+    return (c && c.href) || (location.origin + location.pathname);
+  }
   window.shareArticle = function (platform) {
-    var url = encodeURIComponent(window.location.href);
+    var link = shareUrl();
+    var url = encodeURIComponent(link);
     var title = encodeURIComponent(document.title);
     var map = {
       twitter: "https://twitter.com/intent/tweet?url=" + url + "&text=" + title,
       facebook: "https://www.facebook.com/sharer.php?u=" + url,
-      whatsapp: "https://wa.me/?text=" + title + "%20" + url
+      whatsapp: "https://wa.me/?text=" + title + "%20" + url,
+      telegram: "https://t.me/share/url?url=" + url + "&text=" + title
     };
+    if (platform === "native") {
+      if (navigator.share) navigator.share({ title: document.title, url: link }).catch(function () {});
+      return;
+    }
     if (platform === "copy") {
-      navigator.clipboard && navigator.clipboard.writeText(window.location.href);
+      navigator.clipboard && navigator.clipboard.writeText(link);
       var btn = document.getElementById("copyLinkBtn");
       if (btn) { var old = btn.textContent; btn.textContent = document.documentElement.lang === "en" ? "Link copied!" : "Lien copié !"; setTimeout(function () { btn.textContent = old; }, 1800); }
       return;
     }
     if (map[platform]) window.open(map[platform], "_blank", "noopener,width=600,height=500");
   };
+  // Bouton « Partager » natif (menu de partage Android/iOS) : affiché seulement si le navigateur le gère.
+  (function nativeShare() {
+    var b = document.querySelector("[data-native-share]");
+    if (!b) return;
+    if (!navigator.share) return;
+    b.hidden = false;
+    b.addEventListener("click", function () { window.shareArticle("native"); });
+  })();
 
   /* ── REDIRECTION DES ANCIENNES URLS EN #/route (ex-SPA) ──
      Conserve les anciens liens/favoris fonctionnels (règle #44). */

@@ -602,11 +602,24 @@
         ctx.drawImage(bmp.draw, 0, 0, w, hgt);
         return canvasBlob(c, type, quality).then(function (blob) { return { blob: blob, width: w, height: hgt }; });
       }
-      var tries = [[1600, 0.85], [1600, 0.72], [1280, 0.7], [1000, 0.65], [800, 0.6]];
+      // Transparence ? (échantillon réduit de l'image)
+      var opaque = true;
+      try {
+        var pc = document.createElement("canvas"); pc.width = 48; pc.height = 48;
+        var pctx = pc.getContext("2d");
+        pctx.drawImage(bmp.draw, 0, 0, 48, 48);
+        var px = pctx.getImageData(0, 0, 48, 48).data;
+        for (var k = 3; k < px.length; k += 4) { if (px[k] < 250) { opaque = false; break; } }
+      } catch (e) { opaque = true; }
+      var tries = [[1600, 0.82], [1600, 0.7], [1280, 0.7], [1000, 0.65], [800, 0.6]];
       var LIMIT = 1.9 * 1024 * 1024;
       function attempt(i) {
-        return render(tries[i][0], "image/webp", tries[i][1], false).then(function (r) {
-          if (!r.blob || r.blob.type !== "image/webp") return render(tries[i][0], "image/jpeg", Math.min(0.88, tries[i][1] + 0.03), true);
+        // Photos opaques → JPEG (accepté partout : aperçus WhatsApp, Facebook, LinkedIn…) ; transparence → WebP (comme avant).
+        var first = opaque
+          ? render(tries[i][0], "image/jpeg", Math.min(0.85, tries[i][1]), true)
+          : render(tries[i][0], "image/webp", tries[i][1], false);
+        return first.then(function (r) {
+          if (!opaque && (!r.blob || r.blob.type !== "image/webp")) return render(tries[i][0], "image/jpeg", Math.min(0.88, tries[i][1] + 0.03), true);
           return r;
         }).then(function (r) {
           if (!r.blob) throw new Error("Impossible de préparer cette image. Essayez-en une autre.");

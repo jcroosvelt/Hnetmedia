@@ -139,7 +139,7 @@ const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) proce
     const imgSrc = await page.getAttribute(".hn-ed-prose figure img", "src");
     ok(/^\/media\/[0-9a-f-]{36}$/.test(imgSrc), "image téléversée insérée : " + imgSrc);
     const served = await page.evaluate(async (u) => { const r = await fetch(u); const b = await r.blob(); return { s: r.status, t: r.headers.get("content-type"), n: b.size, cache: r.headers.get("cache-control") }; }, imgSrc);
-    ok(served.s === 200 && served.t === "image/webp" && served.n < 500000 && /immutable/.test(served.cache), `image servie : ${served.t}, ${Math.round(served.n / 1024)} Ko, cache immuable`);
+    ok(served.s === 200 && /^image\/(jpeg|webp)$/.test(served.t) && served.n < 500000 && /immutable/.test(served.cache), `image servie : ${served.t}, ${Math.round(served.n / 1024)} Ko, cache immuable`);
 
     // médiathèque : réutiliser l'image sans la renvoyer
     await page.locator(".hn-ed-prose > p").last().click();

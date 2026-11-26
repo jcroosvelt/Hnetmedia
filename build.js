@@ -224,13 +224,51 @@ function localize(html) {
   });
 }
 
+/* ── MÉTADONNÉES SEO CENTRALISÉES ──
+   Un seul endroit pour : robots, canonical, hreflang, Open Graph (+ image : dimensions, type, texte alternatif),
+   Twitter/X, couleur du thème. Tout est dans le HTML initial (aucun JavaScript requis pour les robots d'aperçu).
+   Les valeurs dynamiques sont échappées (escAttr) et l'image doit être une adresse https absolue, sinon l'image par défaut. */
+const OG_DEFAULT = { width: 1200, height: 630, type: "image/png" };
+function seoMeta({ title, description, canonical, hreflang, ogImage, ogImageInfo, ogType, ogExtra, noindex, noindexFollow }) {
+  const img = /^https:\/\//.test(ogImage || "") ? ogImage : BASE_URL + "/og-default.png";
+  const info = img === ogImage && ogImageInfo ? ogImageInfo : (img === ogImage ? {} : OG_DEFAULT);
+  const alt = info.alt || (img === ogImage ? title : settings.siteName);
+  const robots = noindex ? "noindex, nofollow" : noindexFollow ? "noindex, follow" : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
+  const other = LANG === "en" ? "fr_FR" : "en_GB";
+  const lines = [
+    `<meta name="robots" content="${robots}">`,
+    `<link rel="canonical" href="${escAttr(canonical)}">`,
+    hreflang,
+    '<meta name="theme-color" content="#0A1F44">',
+    `<meta property="og:type" content="${ogType}">`,
+    `<meta property="og:site_name" content="${escAttr(settings.siteName)}">`,
+    `<meta property="og:title" content="${escAttr(title)}">`,
+    `<meta property="og:description" content="${escAttr(description)}">`,
+    `<meta property="og:url" content="${escAttr(canonical)}">`,
+    `<meta property="og:locale" content="${LANG === "en" ? "en_GB" : "fr_FR"}">`,
+    hreflang ? `<meta property="og:locale:alternate" content="${other}">` : "",
+    `<meta property="og:image" content="${escAttr(img)}">`,
+    `<meta property="og:image:secure_url" content="${escAttr(img)}">`,
+    info.type ? `<meta property="og:image:type" content="${escAttr(info.type)}">` : "",
+    info.width && info.height ? `<meta property="og:image:width" content="${info.width}">\n<meta property="og:image:height" content="${info.height}">` : "",
+    `<meta property="og:image:alt" content="${escAttr(alt)}">`,
+    ogExtra,
+    '<meta name="twitter:card" content="summary_large_image">',
+    `<meta name="twitter:title" content="${escAttr(title)}">`,
+    `<meta name="twitter:description" content="${escAttr(description)}">`,
+    `<meta name="twitter:image" content="${escAttr(img)}">`,
+    `<meta name="twitter:image:alt" content="${escAttr(alt)}">`,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 /* ── SQUELETTE DE PAGE ──
    alt : où ce contenu existe dans l'autre langue ({ fr, en } booléens ; par défaut dans les deux). */
-function wrapPage({ title, description, canonicalPath, ogImage, bodyHtml, structuredData = [], noindex = false, extraHead = "", alt }) {
+function wrapPage({ title, description, canonicalPath, ogImage, ogImageInfo, ogType = "website", ogExtra = "", bodyHtml, structuredData = [], noindex = false, noindexFollow = false, extraHead = "", alt }) {
   const here = cleanPath(canonicalPath);
   const canonical = pub(here);
   const has = Object.assign({ fr: true, en: true }, alt || {});
-  const both = has.fr && has.en && !noindex;
+  const both = has.fr && has.en && !noindex && !noindexFollow;
   const hreflang = both
     ? `<link rel="alternate" hreflang="fr" href="${pub(here, "fr")}">\n<link rel="alternate" hreflang="en" href="${pub(here, "en")}">\n<link rel="alternate" hreflang="x-default" href="${pub(here, "fr")}">`
     : "";
@@ -249,21 +287,7 @@ function wrapPage({ title, description, canonicalPath, ogImage, bodyHtml, struct
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escAttr(title)}</title>
 <meta name="description" content="${escAttr(description)}">
-${noindex ? '<meta name="robots" content="noindex, nofollow">' : '<meta name="robots" content="index, follow">'}
-<link rel="canonical" href="${canonical}">
-${hreflang}
-<meta name="theme-color" content="#0A1F44">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="${escAttr(settings.siteName)}">
-<meta property="og:title" content="${escAttr(title)}">
-<meta property="og:description" content="${escAttr(description)}">
-<meta property="og:url" content="${canonical}">
-<meta property="og:image" content="${ogImage || BASE_URL + "/og-default.png"}">
-<meta property="og:locale" content="${LANG === "en" ? "en_GB" : "fr_FR"}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escAttr(title)}">
-<meta name="twitter:description" content="${escAttr(description)}">
-<meta name="twitter:image" content="${ogImage || BASE_URL + "/og-default.png"}">
+${seoMeta({ title, description, canonical, hreflang, ogImage, ogImageInfo, ogType, ogExtra, noindex, noindexFollow })}
 <link rel="alternate" type="application/rss+xml" title="${escAttr(settings.siteName)}" href="${rssHref}">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -482,7 +506,7 @@ function paginationHtml(slug, page, pages) {
 }
 
 /* Liste paginée générique (tags, auteurs) : page 1 = `${base}.html`, suivantes = `${base}/page/N.html`, rel=prev/next. */
-function writePaged(base, arts, { body, title, description, emptyHtml, structuredData }) {
+function writePaged(base, arts, { body, title, description, emptyHtml, structuredData, ogImage }) {
   const pages = Math.max(1, Math.ceil(arts.length / PER_PAGE));
   const fileOf = (p) => (p === 1 ? `${base}.html` : `${base}/page/${p}.html`);
   for (let page = 1; page <= pages; page++) {
@@ -491,6 +515,7 @@ function writePaged(base, arts, { body, title, description, emptyHtml, structure
     const links = [page > 1 ? `<link rel="prev" href="${pub("/" + fileOf(page - 1))}">` : "", page < pages ? `<link rel="next" href="${pub("/" + fileOf(page + 1))}">` : ""].filter(Boolean).join("\n");
     writeFile(fileOf(page), wrapPage({
       title: title(page), description: description(page), canonicalPath: `/${fileOf(page)}`, extraHead: links,
+      noindexFollow: !arts.length, ogImage: ogImage ? absUrl(ogImage) : undefined,
       bodyHtml: body(grid, page), structuredData: structuredData ? structuredData(page) : [],
     }));
   }
@@ -528,6 +553,7 @@ function buildCategoryPages() {
         description: page > 1 ? `${catDesc(c)} (${T("page {n}", { n: page })})` : catDesc(c),
         canonicalPath: canonical,
         extraHead: links,
+        noindexFollow: !arts.length,
         bodyHtml: body,
         structuredData: [breadcrumbLd([{ name: T("Accueil"), path: "/" }, { name: label, path: `/${c.slug}` }].concat(page > 1 ? [{ name: T("Page {n}", { n: page }), path: canonical }] : []))],
       }));
@@ -599,6 +625,7 @@ function buildArticlePages() {
       whatsapp: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21l1.6-4.7A9 9 0 1 1 8 19.6L3 21z"/><path d="M9 9.5c.3 2.2 2.3 4.2 4.5 4.5l1.2-1.2-1.8-.9-.8.6a4 4 0 0 1-1.6-1.6l.6-.8-.9-1.8L9 9.5z"/></svg>',
       facebook: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8.5A.5.5 0 0 1 14 8z"/></svg>',
       x: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l16 16M20 4L4 20"/></svg>',
+      share: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
       link: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
     };
     const photoCaption = a.mainImage && (a.mainImage.caption || a.mainImage.credit)
@@ -635,6 +662,7 @@ function buildArticlePages() {
 
         <div class="art-actions" role="group" aria-label="${T("Partager l'article")}">
           <a class="art-act" href="#comments"><span class="art-ic">${ICON.comment}<b class="art-count" data-cm-count hidden></b></span><span class="art-act-l">${T("Commentaires")}</span></a>
+          <button type="button" class="art-act" data-native-share hidden aria-label="${T("Partager")}">${ICON.share}<span class="art-act-l">${T("Partager")}</span></button>
           <button type="button" class="art-act" onclick="shareArticle('whatsapp')" aria-label="WhatsApp">${ICON.whatsapp}<span class="art-act-l">WhatsApp</span></button>
           <button type="button" class="art-act" onclick="shareArticle('facebook')" aria-label="Facebook">${ICON.facebook}<span class="art-act-l">Facebook</span></button>
           <button type="button" class="art-act" onclick="shareArticle('twitter')" aria-label="${T("Partager sur X")}">${ICON.x}<span class="art-act-l">X</span></button>
@@ -653,6 +681,16 @@ function buildArticlePages() {
     const seoDesc = (a.seo && a.seo.description) || a.excerpt;
     // Aperçu des liens (WhatsApp, Facebook, X…) : l'image principale de l'article d'abord ; image SEO manuelle en secours seulement.
     const ogImg = absUrl((a.mainImage && a.mainImage.url) || (a.seo && a.seo.ogImage) || undefined);
+    const mi = a.mainImage || {};
+    const ogInfo = mi.url && ogImg === absUrl(mi.url) ? { width: mi.width, height: mi.height, type: mi.mime, alt: mi.alt || a.title } : { alt: a.title };
+    const artAuthorUrl = authorLink ? pub(authorLink) : "";
+    const ogArticle = [
+      a.publishedAt ? `<meta property="article:published_time" content="${escAttr(new Date(a.publishedAt).toISOString())}">` : "",
+      (a.updatedAt || a.publishedAt) ? `<meta property="article:modified_time" content="${escAttr(new Date(a.updatedAt || a.publishedAt).toISOString())}">` : "",
+      `<meta property="article:section" content="${escAttr(catLabel(cat))}">`,
+      artAuthorUrl ? `<meta property="article:author" content="${escAttr(artAuthorUrl)}">` : "",
+      ...(a.tags || []).slice(0, 8).map((t) => `<meta property="article:tag" content="${escAttr(t)}">`),
+    ].filter(Boolean).join("\n");
 
     const articleLd = {
       "@context": "https://schema.org",
@@ -661,7 +699,9 @@ function buildArticlePages() {
       description: a.excerpt,
       inLanguage: LANG,
       image: a.mainImage && a.mainImage.url ? [absUrl(a.mainImage.url)] : undefined,
-      author: { "@type": "Person", name: authorName },
+      articleSection: catLabel(cat),
+      keywords: (a.tags || []).length ? a.tags.join(", ") : undefined,
+      author: { "@type": "Person", name: authorName, url: artAuthorUrl || undefined },
       publisher: { "@type": "Organization", name: settings.siteName, logo: { "@type": "ImageObject", url: BASE_URL + "/icon-512.png" } },
       datePublished: a.publishedAt || undefined,
       dateModified: a.updatedAt || a.publishedAt || undefined,
@@ -674,6 +714,9 @@ function buildArticlePages() {
       description: seoDesc,
       canonicalPath: `/article/${a.slug}`,
       ogImage: ogImg,
+      ogImageInfo: ogInfo,
+      ogType: "article",
+      ogExtra: ogArticle,
       bodyHtml: body,
       alt: a.avail,
       structuredData: [articleLd, breadcrumbLd([{ name: T("Accueil"), path: "/" }, { name: catLabel(cat), path: `/${a.category}` }, { name: a.title, path: `/article/${a.slug}` }])],
@@ -697,6 +740,7 @@ function buildAuthorPages() {
       : "";
 
     writePaged(`auteur/${author.id}`, arts, {
+      ogImage: author.photo && /^(\/media\/|https:\/\/)/.test(author.photo) ? author.photo : undefined,
       emptyHtml: emptyState("📝", T("Aucun article publié pour le moment"), T("Les articles de cet auteur apparaîtront ici dès leur publication.")),
       body: (grid, page) => `
     <main><div class="wrap">
@@ -842,6 +886,7 @@ function buildStaticPages() {
       title: `${title} — ${settings.siteName}`,
       description,
       canonicalPath: `/${filename}`,
+      noindexFollow: filename === "recherche.html",
       bodyHtml: `<main>${fragment}</main>`,
     }));
   });
@@ -887,12 +932,12 @@ const SITEMAP = [];
 function collectSitemap() {
   const add = (p, priority, freq, extra = {}) => SITEMAP.push({ lang: LANG, path: cleanPath(p), priority, freq, ...extra });
   add("/", "1.0", "hourly");
-  categories.forEach((c) => {
+  categories.filter((c) => publishedArticles.some((a) => a.category === c.slug)).forEach((c) => {
     add(`/${c.slug}`, "0.8", "hourly");
     const n = Math.ceil(publishedArticles.filter((a) => a.category === c.slug).length / PER_PAGE);
     for (let i = 2; i <= n; i++) add(`/${c.slug}/page/${i}`, "0.5", "hourly", { solo: true });
   });
-  authors.forEach((au) => {
+  authors.filter((au) => publishedArticles.some((a) => a.authorId === au.id)).forEach((au) => {
     add(`/auteur/${au.id}`, "0.3", "weekly");
     const n = Math.ceil(publishedArticles.filter((a) => a.authorId === au.id).length / PER_PAGE);
     for (let i = 2; i <= n; i++) add(`/auteur/${au.id}/page/${i}`, "0.3", "weekly", { solo: true });
@@ -902,13 +947,13 @@ function collectSitemap() {
     const n = Math.ceil(publishedArticles.filter((a) => (a.tags || []).includes(tg)).length / PER_PAGE);
     for (let i = 2; i <= n; i++) add(`/tag/${slugify(tg)}/page/${i}`, "0.3", "weekly", { solo: true });
   });
-  add("/recherche", "0.3", "weekly");
   Object.keys(STATIC_PAGES).filter((f) => f !== "recherche.html").forEach((f) => add(`/${f}`, "0.4", "monthly"));
-  publishedArticles.forEach((a) => add(`/article/${a.slug}`, "0.7", "monthly", { lastmod: a.updatedAt || a.publishedAt, alts: a.avail }));
+  publishedArticles.forEach((a) => add(`/article/${a.slug}`, "0.7", "monthly", { lastmod: a.updatedAt || a.publishedAt, alts: a.avail, image: a.mainImage && a.mainImage.url ? { loc: absUrl(a.mainImage.url), title: a.mainImage.alt || a.title } : null }));
 }
 
 function buildSitemap() {
   const xmlEsc = (x) => String(x).replace(/&/g, "&amp;");
+  const xmlText = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const pathsBoth = new Set(SITEMAP.filter((e) => e.lang === "en").map((e) => e.path));
   const entry = (e) => {
     // équivalent dans l'autre langue : pages communes, ou article disponible dans les deux langues
@@ -918,12 +963,13 @@ function buildSitemap() {
     <loc>${xmlEsc(pub(e.path, e.lang))}</loc>
     ${e.lastmod ? `<lastmod>${new Date(e.lastmod).toISOString().split("T")[0]}</lastmod>` : ""}
     <changefreq>${e.freq}</changefreq>
-    <priority>${e.priority}</priority>
+    <priority>${e.priority}</priority>${e.image && /^https:\/\//.test(e.image.loc) ? `
+    <image:image><image:loc>${xmlEsc(e.image.loc)}</image:loc><image:title>${xmlText(e.image.title)}</image:title></image:image>` : ""}
 ${links}
   </url>`;
   };
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 ${SITEMAP.map(entry).join("\n")}
 </urlset>`;
   LANG = "fr"; writeFile("sitemap.xml", xml);
@@ -934,14 +980,18 @@ function buildRss() {
   <item>
     <title>${escAttr(a.title)}</title>
     <link>${pub(`/article/${a.slug}`)}</link>
-    <guid>${pub(`/article/${a.slug}`)}</guid>
+    <guid isPermaLink="true">${pub(`/article/${a.slug}`)}</guid>
     <description>${escAttr(a.excerpt)}</description>
-    <pubDate>${a.publishedAt ? new Date(a.publishedAt).toUTCString() : ""}</pubDate>
+    <category>${escAttr(catLabel(catBySlug[a.category] || { label: a.category }))}</category>
+    <dc:creator>${escAttr(authorLabel(a))}</dc:creator>
+    <pubDate>${a.publishedAt ? new Date(a.publishedAt).toUTCString() : ""}</pubDate>${a.mainImage && a.mainImage.url && /^https:\/\//.test(absUrl(a.mainImage.url)) ? `
+    <enclosure url="${escAttr(absUrl(a.mainImage.url))}" length="${a.mainImage.size || 0}" type="${escAttr(a.mainImage.mime || "image/jpeg")}"/>` : ""}
   </item>`).join("");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>
   <title>${escAttr(settings.siteName)}</title>
   <link>${pub("/")}</link>
+  <atom:link href="${pub("/rss.xml")}" rel="self" type="application/rss+xml"/>
   <description>${escAttr(langSetting("description"))}</description>
   <language>${LANG === "en" ? "en-gb" : "fr-fr"}</language>
   ${items || "<!-- Aucun article publié pour le moment -->"}
@@ -951,12 +1001,35 @@ function buildRss() {
 
 function buildRobots() {
   LANG = "fr";
+  // Robots autorisés partout sauf espace d'administration, API et recherche interne (pages de résultats).
+  // /media/ (images des aperçus), /assets/ (CSS/JS) et le plan du site restent accessibles.
+  // Rappel : robots.txt limite l'exploration, il n'empêche pas l'indexation (voir <meta robots> / X-Robots-Tag).
   writeFile("robots.txt", `User-agent: *
 Allow: /
+Allow: /media/
+Allow: /assets/
 Disallow: /admin
+Disallow: /api/
+Disallow: /recherche?
+Disallow: /en/recherche?
 
 Sitemap: ${BASE_URL}/sitemap.xml
 `);
+}
+
+/* Android App Links : /.well-known/assetlinks.json (Digital Asset Links).
+   Paquet = identifiant de l'app ; empreinte SHA-256 = certificat de signature de l'APK (signing/debug.keystore du dépôt de l'app,
+   lue avec keytool : ce n'est PAS un secret). Pour une clé de production : variable ANDROID_CERT_SHA256 (liste séparée par des virgules). */
+const ANDROID_PACKAGE = "com.hnetmedia.hnet_admin";
+const ANDROID_CERTS_DEFAULT = ["12:D5:CF:8C:37:06:25:91:AA:BB:33:E8:D0:28:8C:62:CE:E2:5C:68:46:4E:F7:D3:35:E0:49:12:C6:9D:06:B1"];
+function buildAssetLinks() {
+  LANG = "fr";
+  const fromEnv = String(process.env.ANDROID_CERT_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
+  const certs = [...new Set([...ANDROID_CERTS_DEFAULT, ...fromEnv])];
+  writeFile(".well-known/assetlinks.json", JSON.stringify([{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: certs },
+  }], null, 2) + "\n");
 }
 
 /* ══════════════════════════════════════════════
@@ -982,6 +1055,7 @@ function run() {
   }
   buildSitemap();
   buildRobots();
+  buildAssetLinks();
 
   copyDir(path.join(ROOT, "assets"), path.join(DIST_DIR, "assets"));
   // Espace rédaction (/admin) : page + programme + éditeur compilé. Le fichier source
